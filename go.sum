@@ -978,6 +978,8 @@ github.com/mattn/go-sqlite3 v1.14.23 h1:gbShiuAP1W5j9UOksQ06aiiqPMxYecovVGwmTxWt
 github.com/mattn/go-sqlite3 v1.14.23/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/mattn/go-tty v0.0.0-20180907095812-13ff1204f104/go.mod h1:XPvLUNfbS4fJH25nqRHfWLMa1ONC8Amw+mIA639KxkE=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
+github.com/mdehoog/poseidon v0.0.0-20240301020106-ba6c393a5802 h1:CfxXsQOJVRzKn9VPe12SUWQQeUxsBsz7b9PA0A+FOgQ=
+github.com/mdehoog/poseidon v0.0.0-20240301020106-ba6c393a5802/go.mod h1:UWNkR2GgyHX6Nz8cBJXdUDyTf14UoEB+5YgncI0rsJE=
 github.com/mfridman/interpolate v0.0.2 h1:pnuTK7MQIxxFz1Gr+rjSIx9u7qVjf5VOoM/u6BbAxPY=
 github.com/mfridman/interpolate v0.0.2/go.mod h1:p+7uk6oE07mpE/Ik1b8EckO0O4ZXiGAfshKBWLUM9Xg=
 github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
@@ -1464,10 +1466,8 @@ github.com/vocdoni/arbo v0.0.0-20241120112623-8e1cc943f444 h1:wi1im1TNNBSs8P4uZ5
 github.com/vocdoni/arbo v0.0.0-20241120112623-8e1cc943f444/go.mod h1:Esswqcf/RWCJHJ6zB51hefUxYR+bJbs1zjJ1Bpb3InE=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241118090531-f24bf0de0e2f h1:iy2/GnPg5IdlkqslXUwGmqlqONDZSDnDu+1+h9LSDwM=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241118090531-f24bf0de0e2f/go.mod h1:A1WU0hL7rO9oZlvp82you2uCc4T3/ySi1UNW6N6hBJs=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241128161944-73919ddf1c68 h1:v28DlIhv1ntcMMWI+NbcnHqdCQ8bfCR0+D+7tyZFJ+Q=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241128161944-73919ddf1c68/go.mod h1:SUX2CyNDyq8uLPkqlizmYa8kDBpSsgCrIgcL+JdgfEI=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241202120611-440afa35dda9 h1:Rqn0WatSmye3SKLOXPnyYRNBvRkunzB/zmWTVHKG8KA=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241202120611-440afa35dda9/go.mod h1:SUX2CyNDyq8uLPkqlizmYa8kDBpSsgCrIgcL+JdgfEI=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241203110428-f00acce3635e h1:NoSvpANzqr2UEC8+i5AHGuNV4LPV2Dk9+lQ4ge0BlWA=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241203110428-f00acce3635e/go.mod h1:HyEIwSHyIqrtEKJUUybjvloMDrmWWqmGOhsEsKgAPso=
 github.com/vocdoni/storage-proofs-eth-go v0.1.6 h1:mF6VNGudgCjjgjxs5Z2GGMM2tS79+xFBWcr7BnPuhAY=
 github.com/vocdoni/storage-proofs-eth-go v0.1.6/go.mod h1:aoD9pKg8kDFQ5I6b3obGPTwjC+DsaW2h4wt2UQEjQrg=
 github.com/wangjia184/sortedset v0.0.0-20160527075905-f5d03557ba30/go.mod h1:YkocrP2K2tcw938x9gCOmT5G5eCD6jsTz0SZuyAqwIE=
