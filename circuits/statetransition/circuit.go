@@ -2,7 +2,9 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	homomorphic "github.com/vocdoni/gnark-crypto-primitives/homomorphic"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 )
 
@@ -34,6 +36,17 @@ type Circuit struct {
 	ResultsSub    MerkleTransition
 	Ballot        [VoteBatchSize]MerkleTransition
 	Commitment    [VoteBatchSize]MerkleTransition
+
+	EncryptedBallots [VoteBatchSize]EncryptedBallot
+}
+
+type EncryptedBallot struct {
+	A1 twistededwards.Point
+	A2 twistededwards.Point
+	B1 twistededwards.Point
+	B2 twistededwards.Point
+	C1 twistededwards.Point
+	C2 twistededwards.Point
 }
 
 // Define declares the circuit's constraints
@@ -107,8 +120,47 @@ func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
 
-// TODO: mock, sum should be elGamal arithmetic
-func (circuit Circuit) verifyBallots(api frontend.API) {
+// verifyBallots counts the ballots using homomorphic encrpytion
+func (circuit Circuit) verifyBallots(api frontend.API) error {
+	c := circuit.EncryptedBallots[0]
+	// calculate and check sum
+	sum, err := homomorphic.AddPair(api, A, B)
+	if err != nil {
+		return err
+	}
+
+	api.AssertIsEqual(c.C1.X, c1.X)
+	api.AssertIsEqual(c.C1.Y, c1.Y)
+	api.AssertIsEqual(c.C2.X, c2.X)
+	api.AssertIsEqual(c.C2.Y, c2.Y)
+	return nil
+	// var ballotSum, overwrittenSum, ballotCount, overwrittenCount frontend.Variable = 0, 0, 0, 0
+
+	// for _, b := range circuit.Ballot {
+	// 	ballotSum = api.Add(ballotSum, api.Select(api.Or(isUpdate(api, b), isInsert(api, b)),
+	// 		b.NewValue, 0))
+	// 	overwrittenSum = api.Add(overwrittenSum, api.Select(isUpdate(api, b),
+	// 		b.OldValue, 0))
+	// 	ballotCount = api.Add(ballotCount, api.Select(api.Or(isUpdate(api, b), isInsert(api, b)),
+	// 		1, 0))
+	// 	overwrittenCount = api.Add(overwrittenCount, api.Select(isUpdate(api, b),
+	// 		1, 0))
+	// }
+
+	// api.AssertIsEqual(
+	// 	api.Add(circuit.ResultsAdd.OldValue, ballotSum),
+	// 	circuit.ResultsAdd.NewValue)
+	// api.AssertIsEqual(
+	// 	api.Add(circuit.ResultsSub.OldValue, overwrittenSum),
+	// 	circuit.ResultsSub.NewValue)
+	// api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
+	// api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
+}
+
+// verifyMockBallots counts the ballots using a simple api.Add
+//
+// (not intended for production, just for testing purposes)
+func (circuit Circuit) verifyMockBallots(api frontend.API) {
 	var ballotSum, overwrittenSum, ballotCount, overwrittenCount frontend.Variable = 0, 0, 0, 0
 
 	for _, b := range circuit.Ballot {

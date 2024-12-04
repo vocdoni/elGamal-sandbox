@@ -1,10 +1,14 @@
 package test
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
 
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
+	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/tree/arbo"
 )
@@ -154,6 +158,17 @@ func (o *State) EndBatch() error {
 			return err
 		}
 	}
+	// test, mock
+	for i := range o.Witnesses.EncryptedBallots {
+		if i < len(o.votes) {
+			o.Witnesses.EncryptedBallots[i] = o.votes[i].encballot
+		} else {
+			o.Witnesses.EncryptedBallots[i] = o.votes[0].encballot // totally wrong, just avoid nils
+		}
+		if err != nil {
+			return err
+		}
+	}
 
 	// add Commitments
 	for i := range o.Witnesses.Commitment {
@@ -203,17 +218,17 @@ func (o *State) RootAsBigInt() (*big.Int, error) {
 	return arbo.BytesLEToBigInt(root), nil
 }
 
-// Vote describes a vote
-type Vote struct {
+// PlaintextVote describes a vote
+type PlaintextVote struct {
 	nullifier  []byte  // key
 	ballot     big.Int // value
 	address    []byte  // key
 	commitment big.Int // value
 }
 
-// NewVote creates a new vote
-func NewVote(nullifier, amount uint64) Vote {
-	var v Vote
+// NewPlaintextVote creates a new vote
+func NewPlaintextVote(nullifier, amount uint64) PlaintextVote {
+	var v PlaintextVote
 	v.nullifier = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyNullifiersOffset))) // mock
 	v.ballot.SetUint64(amount)
@@ -222,4 +237,146 @@ func NewVote(nullifier, amount uint64) Vote {
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
 	v.commitment.SetUint64(amount + 256) // mock
 	return v
+}
+
+// Vote describes a vote with homomorphic ballot
+type Vote struct {
+	nullifier  []byte                          // key
+	ballot     big.Int                         // value
+	encballot  statetransition.EncryptedBallot // test
+	address    []byte                          // key
+	commitment big.Int                         // value
+}
+
+// NewVote creates a new vote
+func NewVote(nullifier, amount uint64) Vote {
+	var v Vote
+	v.nullifier = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+		big.NewInt(int64(nullifier)+int64(KeyNullifiersOffset))) // mock
+
+	v.ballot.SetUint64(amount) // debug
+
+	v.encballot = NewEncryptedBallot(amount)
+
+	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
+	v.commitment.SetUint64(amount + 256) // mock
+	return v
+}
+
+// NewEncryptedBallot creates a new EncryptedBallot
+func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
+	// generate a public mocked key
+	_, pubKey := generateKeyPair()
+
+	// and a random k to encrypt first message
+	k1, err := randomK()
+	if err != nil {
+		panic(fmt.Errorf("Error generating random k: %v", err))
+	}
+	// encrypt a simple message (mock current Results)
+	msg1 := big.NewInt(3)
+	hMsg1 := encrypt_hMsg(msg1, pubKey, k1)
+
+	// generate a second random k to encrypt a second message
+	k2, err := randomK()
+	if err != nil {
+		panic(fmt.Errorf("Error generating random k: %v", err))
+	}
+	// encrypt a second simple message (mock current Vote)
+	msg2 := big.NewInt(int64(amount))
+	hMsg2 := encrypt_hMsg(msg2, pubKey, k2)
+
+	// calculate the sum of the encrypted messages to check the homomorphic property
+	hMsgSum := add_hMsg(hMsg1, hMsg2)
+
+	// reduce the points to reduced twisted edwards form
+	return statetransition.EncryptedBallot{
+		A1: hMsg1.FromTEtoRTE().A1ToTEPoint(),
+		A2: hMsg1.FromTEtoRTE().A2ToTEPoint(),
+		B1: hMsg2.FromTEtoRTE().A1ToTEPoint(),
+		B2: hMsg2.FromTEtoRTE().A2ToTEPoint(),
+		C1: hMsgSum.FromTEtoRTE().A1ToTEPoint(),
+		C2: hMsgSum.FromTEtoRTE().A2ToTEPoint(),
+	}
+}
+
+func randomK() (*big.Int, error) {
+	// Generate random scalar k
+	kBytes := make([]byte, 32)
+	_, err := rand.Read(kBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random k: %v", err)
+	}
+
+	k := new(big.Int).SetBytes(kBytes)
+	k.Mod(k, babyjub.SubOrder)
+	return k, nil
+}
+
+func generateKeyPair() (babyjub.PrivateKey, *babyjub.PublicKey) {
+	privkey := babyjub.NewRandPrivKey()
+	return privkey, privkey.Public()
+}
+
+func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyjub.Point, *babyjub.Point) {
+	// c1 = [k] * G
+	c1 := babyjub.NewPoint().Mul(k, babyjub.B8)
+	// s = [k] * publicKey
+	s := babyjub.NewPoint().Mul(k, publicKey.Point())
+	// m = [message] * G
+	m := babyjub.NewPoint().Mul(message, babyjub.B8)
+	// c2 = m + s
+	c2p := babyjub.NewPointProjective().Add(m.Projective(), s.Projective())
+	return c1, c2p.Affine()
+}
+
+// HomomorphicMsg dirty helpers
+type HomomorphicMsg struct {
+	A1 *babyjub.Point
+	A2 *babyjub.Point
+}
+
+func encrypt_hMsg(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) HomomorphicMsg {
+	a1, a2 := encrypt(message, publicKey, k)
+	return HomomorphicMsg{
+		A1: a1,
+		A2: a2,
+	}
+}
+
+func (hMsg HomomorphicMsg) FromTEtoRTE() HomomorphicMsg {
+	a1xRTE, a1yRTE := format.FromTEtoRTE(hMsg.A1.X, hMsg.A1.Y)
+	a2xRTE, a2yRTE := format.FromTEtoRTE(hMsg.A2.X, hMsg.A2.Y)
+	return HomomorphicMsg{
+		A1: &babyjub.Point{
+			X: a1xRTE,
+			Y: a1yRTE,
+		},
+		A2: &babyjub.Point{
+			X: a2xRTE,
+			Y: a2yRTE,
+		},
+	}
+}
+
+func add_hMsg(hMsg1, hMsg2 HomomorphicMsg) HomomorphicMsg {
+	return HomomorphicMsg{
+		A1: new(babyjub.PointProjective).Add(hMsg1.A1.Projective(), hMsg2.A1.Projective()).Affine(),
+		A2: new(babyjub.PointProjective).Add(hMsg1.A2.Projective(), hMsg2.A2.Projective()).Affine(),
+	}
+}
+
+func (hMsg HomomorphicMsg) A1ToTEPoint() twistededwards.Point {
+	return twistededwards.Point{
+		X: hMsg.A1.X,
+		Y: hMsg.A1.Y,
+	}
+}
+
+func (hMsg HomomorphicMsg) A2ToTEPoint() twistededwards.Point {
+	return twistededwards.Point{
+		X: hMsg.A2.X,
+		Y: hMsg.A2.Y,
+	}
 }
