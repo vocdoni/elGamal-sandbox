@@ -2,9 +2,8 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
-	homomorphic "github.com/vocdoni/gnark-crypto-primitives/homomorphic"
+	"github.com/vocdoni/gnark-crypto-primitives/homomorphic"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 )
 
@@ -41,12 +40,9 @@ type Circuit struct {
 }
 
 type EncryptedBallot struct {
-	A1 twistededwards.Point
-	A2 twistededwards.Point
-	B1 twistededwards.Point
-	B2 twistededwards.Point
-	C1 twistededwards.Point
-	C2 twistededwards.Point
+	A   homomorphic.Pair
+	B   homomorphic.Pair
+	Sum homomorphic.Pair
 }
 
 // Define declares the circuit's constraints
@@ -124,15 +120,15 @@ func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
 func (circuit Circuit) verifyBallots(api frontend.API) error {
 	c := circuit.EncryptedBallots[0]
 	// calculate and check sum
-	sum, err := homomorphic.AddPair(api, A, B)
+	sum, err := homomorphic.AddPair(api, c.A, c.B)
 	if err != nil {
 		return err
 	}
 
-	api.AssertIsEqual(c.C1.X, c1.X)
-	api.AssertIsEqual(c.C1.Y, c1.Y)
-	api.AssertIsEqual(c.C2.X, c2.X)
-	api.AssertIsEqual(c.C2.Y, c2.Y)
+	api.AssertIsEqual(c.Sum.P1.X, sum.P1.X)
+	api.AssertIsEqual(c.Sum.P1.Y, sum.P1.Y)
+	api.AssertIsEqual(c.Sum.P2.X, sum.P2.X)
+	api.AssertIsEqual(c.Sum.P2.Y, sum.P2.Y)
 	return nil
 	// var ballotSum, overwrittenSum, ballotCount, overwrittenCount frontend.Variable = 0, 0, 0, 0
 

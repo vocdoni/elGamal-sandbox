@@ -7,6 +7,7 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/iden3/go-iden3-crypto/babyjub"
+	"github.com/vocdoni/gnark-crypto-primitives/homomorphic"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
 	"go.vocdoni.io/dvote/db"
@@ -292,12 +293,9 @@ func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
 
 	// reduce the points to reduced twisted edwards form
 	return statetransition.EncryptedBallot{
-		A1: hMsg1.FromTEtoRTE().A1ToTEPoint(),
-		A2: hMsg1.FromTEtoRTE().A2ToTEPoint(),
-		B1: hMsg2.FromTEtoRTE().A1ToTEPoint(),
-		B2: hMsg2.FromTEtoRTE().A2ToTEPoint(),
-		C1: hMsgSum.FromTEtoRTE().A1ToTEPoint(),
-		C2: hMsgSum.FromTEtoRTE().A2ToTEPoint(),
+		A:   hMsg1.ToHPair(),
+		B:   hMsg2.ToHPair(),
+		Sum: hMsgSum.ToHPair(),
 	}
 }
 
@@ -333,50 +331,58 @@ func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyj
 
 // HomomorphicMsg dirty helpers
 type HomomorphicMsg struct {
-	A1 *babyjub.Point
-	A2 *babyjub.Point
+	P1 *babyjub.Point
+	P2 *babyjub.Point
 }
 
 func encrypt_hMsg(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) HomomorphicMsg {
-	a1, a2 := encrypt(message, publicKey, k)
+	p1, p2 := encrypt(message, publicKey, k)
 	return HomomorphicMsg{
-		A1: a1,
-		A2: a2,
+		P1: p1,
+		P2: p2,
 	}
 }
 
 func (hMsg HomomorphicMsg) FromTEtoRTE() HomomorphicMsg {
-	a1xRTE, a1yRTE := format.FromTEtoRTE(hMsg.A1.X, hMsg.A1.Y)
-	a2xRTE, a2yRTE := format.FromTEtoRTE(hMsg.A2.X, hMsg.A2.Y)
+	p1xRTE, p1yRTE := format.FromTEtoRTE(hMsg.P1.X, hMsg.P1.Y)
+	p2xRTE, p2yRTE := format.FromTEtoRTE(hMsg.P2.X, hMsg.P2.Y)
 	return HomomorphicMsg{
-		A1: &babyjub.Point{
-			X: a1xRTE,
-			Y: a1yRTE,
+		P1: &babyjub.Point{
+			X: p1xRTE,
+			Y: p1yRTE,
 		},
-		A2: &babyjub.Point{
-			X: a2xRTE,
-			Y: a2yRTE,
+		P2: &babyjub.Point{
+			X: p2xRTE,
+			Y: p2yRTE,
 		},
 	}
 }
 
 func add_hMsg(hMsg1, hMsg2 HomomorphicMsg) HomomorphicMsg {
 	return HomomorphicMsg{
-		A1: new(babyjub.PointProjective).Add(hMsg1.A1.Projective(), hMsg2.A1.Projective()).Affine(),
-		A2: new(babyjub.PointProjective).Add(hMsg1.A2.Projective(), hMsg2.A2.Projective()).Affine(),
+		P1: new(babyjub.PointProjective).Add(hMsg1.P1.Projective(), hMsg2.P1.Projective()).Affine(),
+		P2: new(babyjub.PointProjective).Add(hMsg1.P2.Projective(), hMsg2.P2.Projective()).Affine(),
 	}
 }
 
 func (hMsg HomomorphicMsg) A1ToTEPoint() twistededwards.Point {
 	return twistededwards.Point{
-		X: hMsg.A1.X,
-		Y: hMsg.A1.Y,
+		X: hMsg.P1.X,
+		Y: hMsg.P1.Y,
 	}
 }
 
 func (hMsg HomomorphicMsg) A2ToTEPoint() twistededwards.Point {
 	return twistededwards.Point{
-		X: hMsg.A2.X,
-		Y: hMsg.A2.Y,
+		X: hMsg.P2.X,
+		Y: hMsg.P2.Y,
+	}
+}
+
+// ToHPair returns a copy of hMsg, with the points reduced to reduced twisted edwards form
+func (hMsg HomomorphicMsg) ToHPair() homomorphic.Pair {
+	return homomorphic.Pair{
+		P1: hMsg.FromTEtoRTE().A1ToTEPoint(),
+		P2: hMsg.FromTEtoRTE().A2ToTEPoint(),
 	}
 }
