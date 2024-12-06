@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
+	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	garbo "github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"go.vocdoni.io/dvote/tree/arbo"
@@ -234,4 +235,44 @@ func (mp *MerkleTransition) Verify(api frontend.API, oldRoot frontend.Variable) 
 func (mp *MerkleTransition) printDebugLog(api frontend.API) {
 	api.Println("verify transition", prettyHex(mp.OldRoot), "->", prettyHex(mp.NewRoot), "|",
 		mp.OldKey, "=", mp.OldValue, "->", mp.NewKey, "=", mp.NewValue)
+}
+
+// IsUpdate returns true when mp.Fnc0 == 0 && mp.Fnc1 == 1
+func (mp *MerkleTransition) IsUpdate(api frontend.API) frontend.Variable {
+	fnc0IsZero := api.IsZero(mp.Fnc0)
+	fnc1IsOne := api.Sub(1, api.IsZero(mp.Fnc1))
+	return api.And(fnc0IsZero, fnc1IsOne)
+}
+
+// IsInsert returns true when mp.Fnc0 == 1 && mp.Fnc1 == 0
+func (mp *MerkleTransition) IsInsert(api frontend.API) frontend.Variable {
+	fnc0IsOne := api.Sub(1, api.IsZero(mp.Fnc0))
+	fnc1IsZero := api.IsZero(mp.Fnc1)
+	return api.And(fnc1IsZero, fnc0IsOne)
+}
+
+// IsInsertOrUpdate returns true when IsInsert or IsUpdate is true
+func (mp *MerkleTransition) IsInsertOrUpdate(api frontend.API) frontend.Variable {
+	return api.Or(mp.IsInsert(api), mp.IsUpdate(api))
+}
+
+type MerkleTransitionElGamal struct {
+	MerkleTransition
+	OldCiphertext elgamal.Ciphertext `gnark:"-"`
+	NewCiphertext elgamal.Ciphertext `gnark:"-"`
+}
+
+// IsUpdate returns true when mp.Fnc0 == 0 && mp.Fnc1 == 1
+func (mp *MerkleTransitionElGamal) IsUpdate(api frontend.API) frontend.Variable {
+	return mp.MerkleTransition.IsUpdate(api)
+}
+
+// IsInsert returns true when mp.Fnc0 == 1 && mp.Fnc1 == 0
+func (mp *MerkleTransitionElGamal) IsInsert(api frontend.API) frontend.Variable {
+	return mp.MerkleTransition.IsInsert(api)
+}
+
+// IsInsertOrUpdate returns true when IsInsert or IsUpdate is true
+func (mp *MerkleTransitionElGamal) IsInsertOrUpdate(api frontend.API) frontend.Variable {
+	return mp.MerkleTransition.IsInsertOrUpdate(api)
 }

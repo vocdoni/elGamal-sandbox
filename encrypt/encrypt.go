@@ -18,7 +18,11 @@ type ElGamalCiphertext struct {
 	C1, C2 *babyjub.Point
 }
 
-func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyjub.Point, *babyjub.Point) {
+func NewElGamalCiphertext() *ElGamalCiphertext {
+	return &ElGamalCiphertext{C1: babyjub.NewPoint(), C2: babyjub.NewPoint()}
+}
+
+func (z *ElGamalCiphertext) Encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) *ElGamalCiphertext {
 	// c1 = [k] * G
 	c1 := babyjub.NewPoint().Mul(k, babyjub.B8)
 	// s = [k] * publicKey
@@ -27,21 +31,17 @@ func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyj
 	m := babyjub.NewPoint().Mul(message, babyjub.B8)
 	// c2 = m + s
 	c2p := babyjub.NewPointProjective().Add(m.Projective(), s.Projective())
-	return c1, c2p.Affine()
-}
-
-func NewElGamalCiphertext(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) ElGamalCiphertext {
-	c1, c2 := encrypt(message, publicKey, k)
-	return ElGamalCiphertext{
+	z = &ElGamalCiphertext{
 		C1: c1,
-		C2: c2,
+		C2: c2p.Affine(),
 	}
+	return z
 }
 
-func (hMsg ElGamalCiphertext) FromTEtoRTE() ElGamalCiphertext {
-	c1xRTE, c1yRTE := format.FromTEtoRTE(hMsg.C1.X, hMsg.C1.Y)
-	c2xRTE, c2yRTE := format.FromTEtoRTE(hMsg.C2.X, hMsg.C2.Y)
-	return ElGamalCiphertext{
+func (z *ElGamalCiphertext) FromTEtoRTE() *ElGamalCiphertext {
+	c1xRTE, c1yRTE := format.FromTEtoRTE(z.C1.X, z.C1.Y)
+	c2xRTE, c2yRTE := format.FromTEtoRTE(z.C2.X, z.C2.Y)
+	return &ElGamalCiphertext{
 		C1: &babyjub.Point{
 			X: c1xRTE,
 			Y: c1yRTE,
@@ -59,26 +59,31 @@ func (z *ElGamalCiphertext) Add(x, y *ElGamalCiphertext) *ElGamalCiphertext {
 	return z
 }
 
-func (hMsg ElGamalCiphertext) A1ToTEPoint() twistededwards.Point {
+func (z *ElGamalCiphertext) A1ToTEPoint() twistededwards.Point {
 	return twistededwards.Point{
-		X: hMsg.C1.X,
-		Y: hMsg.C1.Y,
+		X: z.C1.X,
+		Y: z.C1.Y,
 	}
 }
 
-func (hMsg ElGamalCiphertext) A2ToTEPoint() twistededwards.Point {
+func (z *ElGamalCiphertext) A2ToTEPoint() twistededwards.Point {
 	return twistededwards.Point{
-		X: hMsg.C2.X,
-		Y: hMsg.C2.Y,
+		X: z.C2.X,
+		Y: z.C2.Y,
 	}
 }
 
 // ToGnark returns a copy of hMsg, with the points reduced to reduced twisted edwards form
-func (hMsg ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
+func (z *ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
 	return elgamal.Ciphertext{
-		C1: hMsg.FromTEtoRTE().A1ToTEPoint(),
-		C2: hMsg.FromTEtoRTE().A2ToTEPoint(),
+		C1: z.FromTEtoRTE().A1ToTEPoint(),
+		C2: z.FromTEtoRTE().A2ToTEPoint(),
 	}
+}
+
+// BigInt serializes the content into a BigInt
+func (hMsg ElGamalCiphertext) BigInt() *big.Int {
+	return big.NewInt(0) // completely mock, of course
 }
 
 // ToRTE returns a copy of z, with the points reduced to reduced twisted edwards form

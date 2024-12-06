@@ -17,6 +17,33 @@ import (
 	"go.vocdoni.io/dvote/tree/arbo"
 )
 
+func TestHalfCircuit(t *testing.T) {
+	state, err := NewState(metadb.NewTest(t),
+		[]byte{0xca, 0xfe, 0x00},
+		[]byte{0xca, 0xfe, 0x01},
+		[]byte{0xca, 0xfe, 0x02},
+		[]byte{0xca, 0xfe, 0x03},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := state.AddVote(NewVote(1, 10)); err != nil { // new vote 1
+		t.Fatal(err)
+	}
+
+	if err := state.EndBatch(); err != nil { // expected result: 16+17=33
+		t.Fatal(err)
+	}
+	assert := test.NewAssert(t)
+
+	assert.ProverSucceeded(
+		&statetransition.HalfCircuit{},
+		&state.Witnesses,
+		test.WithCurves(ecc.BN254),
+		test.WithBackends(backend.GROTH16))
+}
+
 func TestStateTransitionCircuit(t *testing.T) {
 	state, err := NewState(metadb.NewTest(t),
 		[]byte{0xca, 0xfe, 0x00},
@@ -84,8 +111,8 @@ func debugLog(t *testing.T, state State) {
 	t.Log("public: NumVotes", prettyHex(state.Witnesses.NumNewVotes))
 	t.Log("public: NumOverwrites", prettyHex(state.Witnesses.NumOverwrites))
 	for name, mt := range map[string]statetransition.MerkleTransition{
-		"ResultsAdd": state.Witnesses.ResultsAdd,
-		"ResultsSub": state.Witnesses.ResultsSub,
+		"ResultsAdd": state.Witnesses.ResultsAdd.MerkleTransition,
+		"ResultsSub": state.Witnesses.ResultsSub.MerkleTransition,
 	} {
 		t.Log(name, "transitioned", "(root", prettyHex(mt.OldRoot), "->", prettyHex(mt.NewRoot), ")",
 			"value", mt.OldValue, "->", mt.NewValue,

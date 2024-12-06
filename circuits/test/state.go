@@ -12,6 +12,9 @@ import (
 	"go.vocdoni.io/dvote/tree/arbo"
 )
 
+// absolute hack, need to reimplement this, store the ciphertexts <-> hash relationship somewhere else
+var memDB map[string]*encrypt.ElGamalCiphertext
+
 var hashFunc = arbo.HashFunctionPoseidon
 
 var (
@@ -31,10 +34,10 @@ type State struct {
 	tree      *arbo.Tree
 	Witnesses statetransition.Circuit // witnesses for the snark circuit
 
-	resultsAdd     *big.Int
-	resultsSub     *big.Int
-	ballotSum      *big.Int
-	overwriteSum   *big.Int
+	resultsAdd     *encrypt.ElGamalCiphertext
+	resultsSub     *encrypt.ElGamalCiphertext
+	ballotSum      *encrypt.ElGamalCiphertext
+	overwriteSum   *encrypt.ElGamalCiphertext
 	ballotCount    int
 	overwriteCount int
 	votes          []Vote
@@ -85,13 +88,13 @@ func (o *State) StartBatch() error {
 	o.Witnesses.NumOverwrites = 0
 	o.Witnesses.AggregatedProof = 0
 	if o.resultsAdd == nil {
-		o.resultsAdd = big.NewInt(0)
+		o.resultsAdd = encrypt.NewElGamalCiphertext()
 	}
 	if o.resultsSub == nil {
-		o.resultsSub = big.NewInt(0)
+		o.resultsSub = encrypt.NewElGamalCiphertext()
 	}
-	o.ballotSum = big.NewInt(0)
-	o.overwriteSum = big.NewInt(0)
+	o.ballotSum = encrypt.NewElGamalCiphertext()
+	o.overwriteSum = encrypt.NewElGamalCiphertext()
 	o.ballotCount = 0
 	o.overwriteCount = 0
 	o.votes = []Vote{}
@@ -124,11 +127,11 @@ func (o *State) AddVote(v Vote) error {
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten vote
 	// so it's later added to circuit.ResultsSub
 	if _, v, err := o.tree.Get(v.nullifier); err == nil {
-		o.overwriteSum = o.overwriteSum.Add(o.overwriteSum, arbo.BytesLEToBigInt(v))
+		o.overwriteSum.Add(o.overwriteSum, memDB[string(v)])
 		o.overwriteCount++
 	}
 
-	o.ballotSum = o.ballotSum.Add(o.ballotSum, &v.ballot)
+	o.ballotSum.Add(o.ballotSum, v.elgamalBallot)
 	o.ballotCount++
 
 	o.votes = append(o.votes, v)
@@ -148,21 +151,10 @@ func (o *State) EndBatch() error {
 	// add Ballots
 	for i := range o.Witnesses.Ballot {
 		if i < len(o.votes) {
-			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
+			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
 				o.votes[i].nullifier, arbo.BigIntToBytesLE(32, &o.votes[i].ballot))
 		} else {
-			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionFromNoop(o.tree)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	// test, mock
-	for i := range o.Witnesses.EncryptedBallots {
-		if i < len(o.votes) {
-			o.Witnesses.EncryptedBallots[i] = o.votes[i].encballot
-		} else {
-			o.Witnesses.EncryptedBallots[i] = o.votes[0].encballot // totally wrong, just avoid nils
+			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromNoop(o.tree)
 		}
 		if err != nil {
 			return err
@@ -183,15 +175,16 @@ func (o *State) EndBatch() error {
 	}
 
 	// update ResultsAdd
-	o.Witnesses.ResultsAdd, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsAdd, arbo.BigIntToBytesLE(32, o.resultsAdd.Add(o.resultsAdd, o.ballotSum)))
+	o.Witnesses.ResultsAdd.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
+		KeyResultsAdd, arbo.BigIntToBytesLE(32, o.resultsAdd.Add(o.resultsAdd, o.ballotSum).BigInt()))
 	if err != nil {
 		return err
 	}
+	o.Witnesses.ResultsAdd.NewCiphertext = o.resultsAdd.ToGnark()
 
 	// update ResultsSub
-	o.Witnesses.ResultsSub, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsSub, arbo.BigIntToBytesLE(32, o.resultsSub.Add(o.resultsSub, o.overwriteSum)))
+	o.Witnesses.ResultsSub.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
+		KeyResultsSub, arbo.BigIntToBytesLE(32, o.resultsSub.Add(o.resultsSub, o.overwriteSum).BigInt()))
 	if err != nil {
 		return err
 	}
@@ -240,11 +233,11 @@ func NewPlaintextVote(nullifier, amount uint64) PlaintextVote {
 
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
-	nullifier  []byte                          // key
-	ballot     big.Int                         // value
-	encballot  statetransition.EncryptedBallot // test
-	address    []byte                          // key
-	commitment big.Int                         // value
+	nullifier     []byte                     // key
+	ballot        big.Int                    // value
+	elgamalBallot *encrypt.ElGamalCiphertext // test
+	address       []byte                     // key
+	commitment    big.Int                    // value
 }
 
 // NewVote creates a new vote
@@ -255,7 +248,7 @@ func NewVote(nullifier, amount uint64) Vote {
 
 	v.ballot.SetUint64(amount) // debug
 
-	v.encballot = NewEncryptedBallot(amount)
+	v.elgamalBallot = NewEncryptedBallot(amount)
 
 	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
@@ -264,7 +257,7 @@ func NewVote(nullifier, amount uint64) Vote {
 }
 
 // NewEncryptedBallot creates a new EncryptedBallot
-func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
+func NewEncryptedBallot(amount uint64) *encrypt.ElGamalCiphertext {
 	// generate a public mocked key
 	_, pubKey := generateKeyPair()
 
@@ -274,28 +267,8 @@ func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
 		panic(fmt.Errorf("Error generating random k: %v", err))
 	}
 	// encrypt a simple message (mock current Results)
-	msg1 := big.NewInt(3)
-	hMsg1 := encrypt.NewElGamalCiphertext(msg1, pubKey, k1)
-
-	// generate a second random k to encrypt a second message
-	k2, err := randomK()
-	if err != nil {
-		panic(fmt.Errorf("Error generating random k: %v", err))
-	}
-	// encrypt a second simple message (mock current Vote)
-	msg2 := big.NewInt(int64(amount))
-	hMsg2 := encrypt.NewElGamalCiphertext(msg2, pubKey, k2)
-
-	// calculate the sum of the encrypted messages to check the homomorphic property
-	hMsgSum := encrypt.ElGamalCiphertext{}
-	hMsgSum.Add(&hMsg1, &hMsg2)
-
-	// reduce the points to reduced twisted edwards form
-	return statetransition.EncryptedBallot{
-		A:   hMsg1.ToGnark(),
-		B:   hMsg2.ToGnark(),
-		Sum: hMsgSum.ToGnark(),
-	}
+	msg1 := big.NewInt(int64(amount))
+	return encrypt.NewElGamalCiphertext().Encrypt(msg1, pubKey, k1)
 }
 
 func randomK() (*big.Int, error) {
