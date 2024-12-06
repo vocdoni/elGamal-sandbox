@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/iden3/go-iden3-crypto/babyjub"
-	"github.com/vocdoni/gnark-crypto-primitives/homomorphic"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
+	"github.com/vocdoni/vocdoni-z-sandbox/encrypt"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/tree/arbo"
 )
@@ -277,7 +275,7 @@ func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
 	}
 	// encrypt a simple message (mock current Results)
 	msg1 := big.NewInt(3)
-	hMsg1 := encrypt_hMsg(msg1, pubKey, k1)
+	hMsg1 := encrypt.NewElGamalCiphertext(msg1, pubKey, k1)
 
 	// generate a second random k to encrypt a second message
 	k2, err := randomK()
@@ -286,16 +284,17 @@ func NewEncryptedBallot(amount uint64) statetransition.EncryptedBallot {
 	}
 	// encrypt a second simple message (mock current Vote)
 	msg2 := big.NewInt(int64(amount))
-	hMsg2 := encrypt_hMsg(msg2, pubKey, k2)
+	hMsg2 := encrypt.NewElGamalCiphertext(msg2, pubKey, k2)
 
 	// calculate the sum of the encrypted messages to check the homomorphic property
-	hMsgSum := add_hMsg(hMsg1, hMsg2)
+	hMsgSum := encrypt.ElGamalCiphertext{}
+	hMsgSum.Add(&hMsg1, &hMsg2)
 
 	// reduce the points to reduced twisted edwards form
 	return statetransition.EncryptedBallot{
-		A:   hMsg1.ToHPair(),
-		B:   hMsg2.ToHPair(),
-		Sum: hMsgSum.ToHPair(),
+		A:   hMsg1.ToGnark(),
+		B:   hMsg2.ToGnark(),
+		Sum: hMsgSum.ToGnark(),
 	}
 }
 
@@ -315,74 +314,4 @@ func randomK() (*big.Int, error) {
 func generateKeyPair() (babyjub.PrivateKey, *babyjub.PublicKey) {
 	privkey := babyjub.NewRandPrivKey()
 	return privkey, privkey.Public()
-}
-
-func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyjub.Point, *babyjub.Point) {
-	// c1 = [k] * G
-	c1 := babyjub.NewPoint().Mul(k, babyjub.B8)
-	// s = [k] * publicKey
-	s := babyjub.NewPoint().Mul(k, publicKey.Point())
-	// m = [message] * G
-	m := babyjub.NewPoint().Mul(message, babyjub.B8)
-	// c2 = m + s
-	c2p := babyjub.NewPointProjective().Add(m.Projective(), s.Projective())
-	return c1, c2p.Affine()
-}
-
-// HomomorphicMsg dirty helpers
-type HomomorphicMsg struct {
-	P1 *babyjub.Point
-	P2 *babyjub.Point
-}
-
-func encrypt_hMsg(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) HomomorphicMsg {
-	p1, p2 := encrypt(message, publicKey, k)
-	return HomomorphicMsg{
-		P1: p1,
-		P2: p2,
-	}
-}
-
-func (hMsg HomomorphicMsg) FromTEtoRTE() HomomorphicMsg {
-	p1xRTE, p1yRTE := format.FromTEtoRTE(hMsg.P1.X, hMsg.P1.Y)
-	p2xRTE, p2yRTE := format.FromTEtoRTE(hMsg.P2.X, hMsg.P2.Y)
-	return HomomorphicMsg{
-		P1: &babyjub.Point{
-			X: p1xRTE,
-			Y: p1yRTE,
-		},
-		P2: &babyjub.Point{
-			X: p2xRTE,
-			Y: p2yRTE,
-		},
-	}
-}
-
-func add_hMsg(hMsg1, hMsg2 HomomorphicMsg) HomomorphicMsg {
-	return HomomorphicMsg{
-		P1: new(babyjub.PointProjective).Add(hMsg1.P1.Projective(), hMsg2.P1.Projective()).Affine(),
-		P2: new(babyjub.PointProjective).Add(hMsg1.P2.Projective(), hMsg2.P2.Projective()).Affine(),
-	}
-}
-
-func (hMsg HomomorphicMsg) A1ToTEPoint() twistededwards.Point {
-	return twistededwards.Point{
-		X: hMsg.P1.X,
-		Y: hMsg.P1.Y,
-	}
-}
-
-func (hMsg HomomorphicMsg) A2ToTEPoint() twistededwards.Point {
-	return twistededwards.Point{
-		X: hMsg.P2.X,
-		Y: hMsg.P2.Y,
-	}
-}
-
-// ToHPair returns a copy of hMsg, with the points reduced to reduced twisted edwards form
-func (hMsg HomomorphicMsg) ToHPair() homomorphic.Pair {
-	return homomorphic.Pair{
-		P1: hMsg.FromTEtoRTE().A1ToTEPoint(),
-		P2: hMsg.FromTEtoRTE().A2ToTEPoint(),
-	}
 }

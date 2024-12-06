@@ -5,9 +5,88 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc"
+	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
 )
+
+// ElGamalCiphertext
+type ElGamalCiphertext struct {
+	C1, C2 *babyjub.Point
+}
+
+func encrypt(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) (*babyjub.Point, *babyjub.Point) {
+	// c1 = [k] * G
+	c1 := babyjub.NewPoint().Mul(k, babyjub.B8)
+	// s = [k] * publicKey
+	s := babyjub.NewPoint().Mul(k, publicKey.Point())
+	// m = [message] * G
+	m := babyjub.NewPoint().Mul(message, babyjub.B8)
+	// c2 = m + s
+	c2p := babyjub.NewPointProjective().Add(m.Projective(), s.Projective())
+	return c1, c2p.Affine()
+}
+
+func NewElGamalCiphertext(message *big.Int, publicKey *babyjub.PublicKey, k *big.Int) ElGamalCiphertext {
+	c1, c2 := encrypt(message, publicKey, k)
+	return ElGamalCiphertext{
+		C1: c1,
+		C2: c2,
+	}
+}
+
+func (hMsg ElGamalCiphertext) FromTEtoRTE() ElGamalCiphertext {
+	c1xRTE, c1yRTE := format.FromTEtoRTE(hMsg.C1.X, hMsg.C1.Y)
+	c2xRTE, c2yRTE := format.FromTEtoRTE(hMsg.C2.X, hMsg.C2.Y)
+	return ElGamalCiphertext{
+		C1: &babyjub.Point{
+			X: c1xRTE,
+			Y: c1yRTE,
+		},
+		C2: &babyjub.Point{
+			X: c2xRTE,
+			Y: c2yRTE,
+		},
+	}
+}
+
+func (z *ElGamalCiphertext) Add(x, y *ElGamalCiphertext) *ElGamalCiphertext {
+	z.C1 = new(babyjub.PointProjective).Add(x.C1.Projective(), y.C1.Projective()).Affine()
+	z.C2 = new(babyjub.PointProjective).Add(x.C2.Projective(), y.C2.Projective()).Affine()
+	return z
+}
+
+func (hMsg ElGamalCiphertext) A1ToTEPoint() twistededwards.Point {
+	return twistededwards.Point{
+		X: hMsg.C1.X,
+		Y: hMsg.C1.Y,
+	}
+}
+
+func (hMsg ElGamalCiphertext) A2ToTEPoint() twistededwards.Point {
+	return twistededwards.Point{
+		X: hMsg.C2.X,
+		Y: hMsg.C2.Y,
+	}
+}
+
+// ToGnark returns a copy of hMsg, with the points reduced to reduced twisted edwards form
+func (hMsg ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
+	return elgamal.Ciphertext{
+		C1: hMsg.FromTEtoRTE().A1ToTEPoint(),
+		C2: hMsg.FromTEtoRTE().A2ToTEPoint(),
+	}
+}
+
+// ToRTE returns a copy of z, with the points reduced to reduced twisted edwards form
+// func (z *Ciphertext) ToRTE() *Ciphertext {
+// 	return &Ciphertext{
+// 		C1: z.FromTEtoRTE().A1ToTEPoint(),
+// 		C2: z.FromTEtoRTE().A2ToTEPoint(),
+// 	}
 
 // RandK function generates a random k value for encryption.
 func RandK() (*big.Int, error) {
@@ -30,17 +109,14 @@ func Encrypt(publicKey ecc.Point, msg *big.Int) (ecc.Point, ecc.Point, *big.Int,
 		return nil, nil, nil, err
 	}
 	// encrypt the message using the random k generated
-	c1, c2, err := EncryptWithK(publicKey, msg, k)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	c1, c2 := EncryptWithK(publicKey, msg, k)
 	return c1, c2, k, nil
 }
 
 // EncryptWithK function encrypts a message using the public key provided as
 // elliptic curve point and the random k value provided. It returns the two
 // points that represent the encrypted message and error if any.
-func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point, error) {
+func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	order := pubKey.Order()
 	// ensure the message is within the field
 	msg.Mod(msg, order)
@@ -56,5 +132,5 @@ func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point, erro
 	// compute C2 = M + s
 	c2 := pubKey.New()
 	c2.Add(m, s)
-	return c1, c2, nil
+	return c1, c2
 }

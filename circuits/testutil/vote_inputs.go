@@ -99,10 +99,7 @@ func CipherBallotFields(fields []*big.Int, n int, pk ecc.Point, k *big.Int) ([][
 	plainCipherfields := []*big.Int{}
 	for i := 0; i < n; i++ {
 		if i < len(fields) {
-			c1, c2, err := encrypt.EncryptWithK(pk, fields[i], k)
-			if err != nil {
-				panic(err)
-			}
+			c1, c2 := encrypt.EncryptWithK(pk, fields[i], k)
 			c1X, c1Y := c1.Point()
 			c2X, c2Y := c2.Point()
 			cipherfields[i] = [][]string{

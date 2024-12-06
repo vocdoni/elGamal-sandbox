@@ -2,8 +2,8 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
+	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
-	"github.com/vocdoni/gnark-crypto-primitives/homomorphic"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 )
 
@@ -40,9 +40,9 @@ type Circuit struct {
 }
 
 type EncryptedBallot struct {
-	A   homomorphic.Pair
-	B   homomorphic.Pair
-	Sum homomorphic.Pair
+	A   elgamal.Ciphertext
+	B   elgamal.Ciphertext
+	Sum elgamal.Ciphertext
 }
 
 // Define declares the circuit's constraints
@@ -120,15 +120,9 @@ func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
 func (circuit Circuit) verifyBallots(api frontend.API) error {
 	c := circuit.EncryptedBallots[0]
 	// calculate and check sum
-	sum, err := homomorphic.AddPair(api, c.A, c.B)
-	if err != nil {
-		return err
-	}
-
-	api.AssertIsEqual(c.Sum.P1.X, sum.P1.X)
-	api.AssertIsEqual(c.Sum.P1.Y, sum.P1.Y)
-	api.AssertIsEqual(c.Sum.P2.X, sum.P2.X)
-	api.AssertIsEqual(c.Sum.P2.Y, sum.P2.Y)
+	sum := &elgamal.Ciphertext{}
+	sum.Add(api, &c.A, &c.B)
+	sum.AssertIsEqual(api, &c.Sum)
 	return nil
 	// var ballotSum, overwrittenSum, ballotCount, overwrittenCount frontend.Variable = 0, 0, 0, 0
 
