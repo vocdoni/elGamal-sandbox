@@ -2,7 +2,6 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
@@ -115,37 +114,24 @@ func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
 
 // verifyBallots counts the ballots using homomorphic encrpytion
 func (circuit Circuit) verifyBallots(api frontend.API) {
-	ballotSum, overwrittenSum := elgamal.Ciphertext{}, elgamal.Ciphertext{}
+	ballotSum, overwrittenSum, zero := elgamal.NewCiphertext(), elgamal.NewCiphertext(), elgamal.NewCiphertext()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
-	zero := elgamal.Ciphertext{
-		C1: twistededwards.Point{
-			X: 0,
-			Y: 0,
-		},
-		C2: twistededwards.Point{
-			X: 0,
-			Y: 0,
-		},
-	}
-
 	for _, b := range circuit.Ballot {
-		ballot := elgamal.Ciphertext{}
-		ballot.Select(api, b.IsInsertOrUpdate(api), &b.NewCiphertext, &zero)
-		ballotSum.Add(api, &ballotSum, &ballot)
+		ballotSum.Add(api, ballotSum,
+			elgamal.NewCiphertext().Select(api, b.IsInsertOrUpdate(api), &b.NewCiphertext, zero))
 
-		overwritten := elgamal.Ciphertext{}
-		overwritten.Select(api, b.IsUpdate(api), &b.OldCiphertext, &zero)
-		overwrittenSum.Add(api, &overwrittenSum, &overwritten)
+		overwrittenSum.Add(api, overwrittenSum,
+			elgamal.NewCiphertext().Select(api, b.IsUpdate(api), &b.OldCiphertext, zero))
 
-		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api), 1, 0)
-		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api), 1, 0)
+		ballotCount = api.Add(ballotCount, api.Select(b.IsInsertOrUpdate(api), 1, 0))
+		overwrittenCount = api.Add(overwrittenCount, api.Select(b.IsUpdate(api), 1, 0))
 	}
 
 	circuit.ResultsAdd.NewCiphertext.AssertIsEqual(api,
-		circuit.ResultsAdd.OldCiphertext.Add(api, &circuit.ResultsAdd.OldCiphertext, &ballotSum))
+		circuit.ResultsAdd.OldCiphertext.Add(api, &circuit.ResultsAdd.OldCiphertext, ballotSum))
 	circuit.ResultsSub.NewCiphertext.AssertIsEqual(api,
-		circuit.ResultsSub.OldCiphertext.Add(api, &circuit.ResultsSub.OldCiphertext, &overwrittenSum))
+		circuit.ResultsSub.OldCiphertext.Add(api, &circuit.ResultsSub.OldCiphertext, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
 	api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
 }

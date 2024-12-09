@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	garbo "github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
+	"github.com/vocdoni/vocdoni-z-sandbox/encrypt"
 	"go.vocdoni.io/dvote/tree/arbo"
 )
 
@@ -258,8 +259,21 @@ func (mp *MerkleTransition) IsInsertOrUpdate(api frontend.API) frontend.Variable
 
 type MerkleTransitionElGamal struct {
 	MerkleTransition
-	OldCiphertext elgamal.Ciphertext `gnark:"-"`
-	NewCiphertext elgamal.Ciphertext `gnark:"-"`
+	OldCiphertext elgamal.Ciphertext
+	NewCiphertext elgamal.Ciphertext
+}
+
+// MerkleTransitionFromNoop returns a NOOP MerkleTransition.
+func MerkleTransitionElGamalFromNoop(t *arbo.Tree) (MerkleTransitionElGamal, error) {
+	mp, err := MerkleTransitionFromNoop(t)
+	if err != nil {
+		return MerkleTransitionElGamal{}, err
+	}
+	return MerkleTransitionElGamal{
+		MerkleTransition: mp,
+		NewCiphertext:    encrypt.NewElGamalCiphertext().ToGnark(),
+		OldCiphertext:    encrypt.NewElGamalCiphertext().ToGnark(),
+	}, nil
 }
 
 // IsUpdate returns true when mp.Fnc0 == 0 && mp.Fnc1 == 1

@@ -153,8 +153,10 @@ func (o *State) EndBatch() error {
 		if i < len(o.votes) {
 			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
 				o.votes[i].nullifier, arbo.BigIntToBytesLE(32, &o.votes[i].ballot))
+			o.Witnesses.Ballot[i].NewCiphertext = o.votes[i].elgamalBallot.ToGnark()
+			o.Witnesses.Ballot[i].OldCiphertext = o.votes[i].elgamalBallot.ToGnark() // mock
 		} else {
-			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromNoop(o.tree)
+			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionElGamalFromNoop(o.tree)
 		}
 		if err != nil {
 			return err
@@ -175,6 +177,7 @@ func (o *State) EndBatch() error {
 	}
 
 	// update ResultsAdd
+	o.Witnesses.ResultsAdd.OldCiphertext = o.resultsAdd.ToGnark()
 	o.Witnesses.ResultsAdd.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
 		KeyResultsAdd, arbo.BigIntToBytesLE(32, o.resultsAdd.Add(o.resultsAdd, o.ballotSum).BigInt()))
 	if err != nil {
@@ -183,11 +186,13 @@ func (o *State) EndBatch() error {
 	o.Witnesses.ResultsAdd.NewCiphertext = o.resultsAdd.ToGnark()
 
 	// update ResultsSub
+	o.Witnesses.ResultsSub.OldCiphertext = o.resultsSub.ToGnark()
 	o.Witnesses.ResultsSub.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
 		KeyResultsSub, arbo.BigIntToBytesLE(32, o.resultsSub.Add(o.resultsSub, o.overwriteSum).BigInt()))
 	if err != nil {
 		return err
 	}
+	o.Witnesses.ResultsSub.NewCiphertext = o.resultsSub.ToGnark()
 
 	// update stats
 	o.Witnesses.NumNewVotes = o.ballotCount

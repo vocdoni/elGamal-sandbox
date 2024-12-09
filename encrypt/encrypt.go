@@ -73,7 +73,7 @@ func (z *ElGamalCiphertext) A2ToTEPoint() twistededwards.Point {
 	}
 }
 
-// ToGnark returns a copy of hMsg, with the points reduced to reduced twisted edwards form
+// ToGnark returns a copy of z, with the points reduced to reduced twisted edwards form
 func (z *ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
 	return elgamal.Ciphertext{
 		C1: z.FromTEtoRTE().A1ToTEPoint(),
