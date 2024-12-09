@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -20,32 +19,11 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	arbotree "github.com/vocdoni/arbo"
-	"github.com/vocdoni/circom2gnark/parser"
-	ptest "github.com/vocdoni/gnark-crypto-primitives/test"
+	ptest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 	ztest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test"
 	"github.com/vocdoni/vocdoni-z-sandbox/encrypt"
 
 	"go.vocdoni.io/dvote/util"
-)
-
-const (
-	n_fields = 8
-	n_levels = 160
-)
-
-var (
-	ballotProofWasm = "../assets/circom/circuit/ballot_proof.wasm"
-	ballotProofPKey = "../assets/circom/circuit/ballot_proof_pkey.zkey"
-	ballotProofVKey = "../assets/circom/circuit/ballot_proof_vkey.json"
-
-	maxCount        = 5
-	forceUniqueness = 0
-	maxValue        = 16
-	minValue        = 0
-	costExp         = 2
-	costFromWeight  = 0
-	weight          = 10
-	fields          = ztest.GenerateBallotFields(maxCount, maxValue, minValue, forceUniqueness > 0)
 )
 
 func TestVerifyVoteCircuit(t *testing.T) {
@@ -53,13 +31,14 @@ func TestVerifyVoteCircuit(t *testing.T) {
 
 	// CLIENT SIDE CIRCOM CIRCUIT
 
+	fields := ztest.GenerateBallotFields(ztest.MaxCount, ztest.MaxValue, ztest.MinValue, ztest.ForceUniqueness > 0)
 	// generate encryption key and user nonce k
 	encryptionKey := ztest.GenerateEncryptionTestKey()
 	encryptionKeyX, encryptionKeyY := encryptionKey.Point()
 	k, err := encrypt.RandK()
 	c.Assert(err, qt.IsNil)
 	// encrypt the ballots
-	cipherfields, plainCipherfields := ztest.CipherBallotFields(fields, n_fields, encryptionKey, k)
+	cipherfields, plainCipherfields := ztest.CipherBallotFields(fields, ztest.NFields, encryptionKey, k)
 	// generate voter account
 	privKey, pubKey, address, err := ztest.GenerateECDSAaccount()
 	c.Assert(err, qt.IsNil)
@@ -70,16 +49,16 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	// group the circom inputs to hash
 	bigCircomInputs := []*big.Int{
-		big.NewInt(int64(maxCount)),
-		big.NewInt(int64(forceUniqueness)),
-		big.NewInt(int64(maxValue)),
-		big.NewInt(int64(minValue)),
-		big.NewInt(int64(math.Pow(float64(maxValue), float64(costExp))) * int64(maxCount)),
-		big.NewInt(int64(maxCount)),
-		big.NewInt(int64(costExp)),
-		big.NewInt(int64(costFromWeight)),
+		big.NewInt(int64(ztest.MaxCount)),
+		big.NewInt(int64(ztest.ForceUniqueness)),
+		big.NewInt(int64(ztest.MaxValue)),
+		big.NewInt(int64(ztest.MinValue)),
+		big.NewInt(int64(math.Pow(float64(ztest.MaxValue), float64(ztest.CostExp))) * int64(ztest.MaxCount)),
+		big.NewInt(int64(ztest.MaxCount)),
+		big.NewInt(int64(ztest.CostExp)),
+		big.NewInt(int64(ztest.CostFromWeight)),
 		arbotree.BigToFF(arbotree.BN254BaseField, new(big.Int).SetBytes(address.Bytes())),
-		big.NewInt(int64(weight)),
+		big.NewInt(int64(ztest.Weight)),
 		arbotree.BigToFF(arbotree.BN254BaseField, new(big.Int).SetBytes(processID)),
 		encryptionKeyX,
 		encryptionKeyY,
@@ -97,17 +76,17 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	rSign, sSign, err := ztest.SignECDSA(privKey, blsCircomInputsHash.Bytes())
 	// init circom inputs
 	circomInputs := map[string]any{
-		"fields":           ztest.BigIntArrayToStringArray(fields, n_fields),
-		"max_count":        fmt.Sprint(maxCount),
-		"force_uniqueness": fmt.Sprint(forceUniqueness),
-		"max_value":        fmt.Sprint(maxValue),
-		"min_value":        fmt.Sprint(minValue),
-		"max_total_cost":   fmt.Sprint(int(math.Pow(float64(maxValue), float64(costExp))) * maxCount), // (maxValue-1)^costExp * maxCount
-		"min_total_cost":   fmt.Sprint(maxCount),
-		"cost_exp":         fmt.Sprint(costExp),
-		"cost_from_weight": fmt.Sprint(costFromWeight),
+		"fields":           ztest.BigIntArrayToStringArray(fields, ztest.NFields),
+		"max_count":        fmt.Sprint(ztest.MaxCount),
+		"force_uniqueness": fmt.Sprint(ztest.ForceUniqueness),
+		"max_value":        fmt.Sprint(ztest.MaxValue),
+		"min_value":        fmt.Sprint(ztest.MinValue),
+		"max_total_cost":   fmt.Sprint(int(math.Pow(float64(ztest.MaxValue), float64(ztest.CostExp))) * ztest.MaxCount),
+		"min_total_cost":   fmt.Sprint(ztest.MaxCount),
+		"cost_exp":         fmt.Sprint(ztest.CostExp),
+		"cost_from_weight": fmt.Sprint(ztest.CostFromWeight),
 		"address":          arbotree.BigToFF(arbotree.BN254BaseField, new(big.Int).SetBytes(address.Bytes())).String(),
-		"weight":           fmt.Sprint(weight),
+		"weight":           fmt.Sprint(ztest.Weight),
 		"process_id":       arbotree.BigToFF(arbotree.BN254BaseField, new(big.Int).SetBytes(processID)).String(),
 		"pk":               []string{encryptionKeyX.String(), encryptionKeyY.String()},
 		"k":                k.String(),
@@ -120,12 +99,14 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	bCircomInputs, err := json.Marshal(circomInputs)
 	c.Assert(err, qt.IsNil)
 	// create the proof
-	circomProof, pubSignals, err := ztest.CompileAndGenerateProof(bCircomInputs, ballotProofWasm, ballotProofPKey)
+	placeholders, err := ztest.Circom2GnarkPlaceholder()
+	c.Assert(err, qt.IsNil)
+	proof, err := ztest.Circom2GnarkProof(bCircomInputs)
 	c.Assert(err, qt.IsNil)
 	// transform cipherfields to gnark frontend.Variable
-	fBallots := [n_fields][2][2]emulated.Element[sw_bn254.ScalarField]{}
+	emulatedBallots := [ztest.NFields][2][2]emulated.Element[sw_bn254.ScalarField]{}
 	for i, c := range cipherfields {
-		fBallots[i] = [2][2]emulated.Element[sw_bn254.ScalarField]{
+		emulatedBallots[i] = [2][2]emulated.Element[sw_bn254.ScalarField]{
 			{
 				emulated.ValueOf[sw_bn254.ScalarField](c[0][0]),
 				emulated.ValueOf[sw_bn254.ScalarField](c[0][1]),
@@ -140,15 +121,15 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	testCensus, err := ptest.GenerateCensusProofForTest(ptest.CensusTestConfig{
 		Dir:           "../assets/census",
 		ValidSiblings: 10,
-		TotalSiblings: n_levels,
+		TotalSiblings: ztest.NLevels,
 		KeyLen:        20,
 		Hash:          arbotree.HashFunctionMiMC_BLS12_377,
 		BaseFiled:     arbotree.BLS12377BaseField,
-	}, address.Bytes(), new(big.Int).SetInt64(int64(weight)).Bytes())
+	}, [][]byte{address.Bytes()}, [][]byte{new(big.Int).SetInt64(int64(ztest.Weight)).Bytes()})
 	c.Assert(err, qt.IsNil)
 	// transform siblings to gnark frontend.Variable
-	fSiblings := [n_levels]frontend.Variable{}
-	for i, s := range testCensus.Siblings {
+	fSiblings := [ztest.NLevels]frontend.Variable{}
+	for i, s := range testCensus.Proofs[0].Siblings {
 		fSiblings[i] = frontend.Variable(s)
 	}
 	// hash the inputs of gnark circuit (circom inputs hash + census root)
@@ -156,13 +137,11 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	hFn.Write(blsCircomInputsHash.Bytes())
 	hFn.Write(testCensus.Root.Bytes())
 	inputsHash := new(big.Int).SetBytes(hFn.Sum(nil))
-	// parse input files
-	proof, placeHolders, _, err := parseCircomInputs(ballotProofVKey, circomProof, pubSignals)
-	c.Assert(err, qt.IsNil)
+	// compose circuit placeholders
 	placeholder := VerifyVoteCircuit{
-		CircomProof:            placeHolders.Proof,
-		CircomPublicInputsHash: placeHolders.Witness,
-		CircomVerificationKey:  placeHolders.Vk,
+		CircomProof:            placeholders.Proof,
+		CircomPublicInputsHash: placeholders.Witness,
+		CircomVerificationKey:  placeholders.Vk,
 	}
 
 	// SERVER SIDE GNARK CIRCUIT
@@ -171,16 +150,16 @@ func TestVerifyVoteCircuit(t *testing.T) {
 	witness := VerifyVoteCircuit{
 		InputsHash: inputsHash,
 		// circom inputs
-		MaxCount:        emulated.ValueOf[sw_bn254.ScalarField](maxCount),
-		ForceUniqueness: emulated.ValueOf[sw_bn254.ScalarField](forceUniqueness),
-		MaxValue:        emulated.ValueOf[sw_bn254.ScalarField](maxValue),
-		MinValue:        emulated.ValueOf[sw_bn254.ScalarField](minValue),
-		MaxTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](int(math.Pow(float64(maxValue), float64(costExp))) * maxCount),
-		MinTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](maxCount),
-		CostExp:         emulated.ValueOf[sw_bn254.ScalarField](costExp),
-		CostFromWeight:  emulated.ValueOf[sw_bn254.ScalarField](costFromWeight),
+		MaxCount:        emulated.ValueOf[sw_bn254.ScalarField](ztest.MaxCount),
+		ForceUniqueness: emulated.ValueOf[sw_bn254.ScalarField](ztest.ForceUniqueness),
+		MaxValue:        emulated.ValueOf[sw_bn254.ScalarField](ztest.MaxValue),
+		MinValue:        emulated.ValueOf[sw_bn254.ScalarField](ztest.MinValue),
+		MaxTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](int(math.Pow(float64(ztest.MaxValue), float64(ztest.CostExp))) * ztest.MaxCount),
+		MinTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](ztest.MaxCount),
+		CostExp:         emulated.ValueOf[sw_bn254.ScalarField](ztest.CostExp),
+		CostFromWeight:  emulated.ValueOf[sw_bn254.ScalarField](ztest.CostFromWeight),
 		Address:         emulated.ValueOf[sw_bn254.ScalarField](address.Big()),
-		UserWeight:      emulated.ValueOf[sw_bn254.ScalarField](weight),
+		UserWeight:      emulated.ValueOf[sw_bn254.ScalarField](ztest.Weight),
 		EncryptionPubKey: [2]emulated.Element[sw_bn254.ScalarField]{
 			emulated.ValueOf[sw_bn254.ScalarField](encryptionKeyX),
 			emulated.ValueOf[sw_bn254.ScalarField](encryptionKeyY),
@@ -188,7 +167,7 @@ func TestVerifyVoteCircuit(t *testing.T) {
 		Nullifier:       emulated.ValueOf[sw_bn254.ScalarField](nullifier),
 		Commitment:      emulated.ValueOf[sw_bn254.ScalarField](commitment),
 		ProcessId:       emulated.ValueOf[sw_bn254.ScalarField](arbotree.BigToFF(arbotree.BN254BaseField, new(big.Int).SetBytes(processID))),
-		EncryptedBallot: fBallots,
+		EncryptedBallot: emulatedBallots,
 		// census proof
 		CensusRoot:     testCensus.Root,
 		CensusSiblings: fSiblings,
@@ -213,35 +192,4 @@ func TestVerifyVoteCircuit(t *testing.T) {
 		test.WithCurves(ecc.BLS12_377),
 		test.WithBackends(backend.GROTH16))
 	fmt.Println("proving tooks", time.Since(now))
-}
-
-func parseCircomInputs(vKeyFile string, rawProof, rawPubSignals string) (*parser.GnarkRecursionProof, *parser.GnarkRecursionPlaceholders, *big.Int, error) {
-	// load data from assets
-	vKeyData, err := os.ReadFile(vKeyFile)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	// transform to gnark format
-	gnarkProofData, err := parser.UnmarshalCircomProofJSON([]byte(rawProof))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	gnarkPubSignalsData, err := parser.UnmarshalCircomPublicSignalsJSON([]byte(rawPubSignals))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	gnarkVKeyData, err := parser.UnmarshalCircomVerificationKeyJSON(vKeyData)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	proof, placeHolders, err := parser.ConvertCircomToGnarkRecursion(gnarkProofData, gnarkVKeyData, gnarkPubSignalsData, true)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	// decode pub input to get the hash to sign
-	inputsHash, ok := new(big.Int).SetString(gnarkPubSignalsData[0], 10)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("failed to decode inputs hash")
-	}
-	return proof, placeHolders, inputsHash, nil
 }
