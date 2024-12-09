@@ -12,8 +12,24 @@ import (
 	"go.vocdoni.io/dvote/tree/arbo"
 )
 
-// absolute hack, need to reimplement this, store the ciphertexts <-> hash relationship somewhere else
+// absolute hack, need to reimplement this:
+// store the serialized ciphertext in arbo tree, (something simple, concat the bytes)
+// and inside the circuit check the hash(serializedCiphertext) = Leaf
 var memDB map[string]*encrypt.ElGamalCiphertext
+
+func init() {
+	memDB = make(map[string]*encrypt.ElGamalCiphertext)
+}
+
+func oldVote(nullifier []byte) *encrypt.ElGamalCiphertext {
+	return memDB[string(nullifier)]
+}
+
+func storeVote(nullifier []byte, vote *encrypt.ElGamalCiphertext) {
+	memDB[string(nullifier)] = vote
+}
+
+// end absolute hack
 
 var hashFunc = arbo.HashFunctionPoseidon
 
@@ -126,8 +142,8 @@ func (o *State) AddVote(v Vote) error {
 
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten vote
 	// so it's later added to circuit.ResultsSub
-	if _, v, err := o.tree.Get(v.nullifier); err == nil {
-		o.overwriteSum.Add(o.overwriteSum, memDB[string(v)])
+	if _, _, err := o.tree.Get(v.nullifier); err == nil {
+		o.overwriteSum.Add(o.overwriteSum, oldVote(v.nullifier))
 		o.overwriteCount++
 	}
 
@@ -151,10 +167,10 @@ func (o *State) EndBatch() error {
 	// add Ballots
 	for i := range o.Witnesses.Ballot {
 		if i < len(o.votes) {
+			o.Witnesses.Ballot[i].OldCiphertext = o.votes[i].elgamalBallot.ToGnark() // mock
 			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
 				o.votes[i].nullifier, arbo.BigIntToBytesLE(32, &o.votes[i].ballot))
 			o.Witnesses.Ballot[i].NewCiphertext = o.votes[i].elgamalBallot.ToGnark()
-			o.Witnesses.Ballot[i].OldCiphertext = o.votes[i].elgamalBallot.ToGnark() // mock
 		} else {
 			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionElGamalFromNoop(o.tree)
 		}
@@ -254,6 +270,8 @@ func NewVote(nullifier, amount uint64) Vote {
 	v.ballot.SetUint64(amount) // debug
 
 	v.elgamalBallot = NewEncryptedBallot(amount)
+
+	storeVote(v.nullifier, v.elgamalBallot)
 
 	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
