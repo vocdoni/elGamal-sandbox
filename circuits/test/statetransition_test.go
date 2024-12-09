@@ -110,13 +110,17 @@ func debugLog(t *testing.T, state State) {
 	t.Log("public: RootHashAfter", prettyHex(state.Witnesses.RootHashAfter))
 	t.Log("public: NumVotes", prettyHex(state.Witnesses.NumNewVotes))
 	t.Log("public: NumOverwrites", prettyHex(state.Witnesses.NumOverwrites))
-	for name, mt := range map[string]statetransition.MerkleTransition{
-		"ResultsAdd": state.Witnesses.ResultsAdd.MerkleTransition,
-		"ResultsSub": state.Witnesses.ResultsSub.MerkleTransition,
+	for name, mt := range map[string]statetransition.MerkleTransitionElGamal{
+		"ResultsAdd": state.Witnesses.ResultsAdd,
+		"ResultsSub": state.Witnesses.ResultsSub,
 	} {
 		t.Log(name, "transitioned", "(root", prettyHex(mt.OldRoot), "->", prettyHex(mt.NewRoot), ")",
 			"value", mt.OldValue, "->", mt.NewValue,
 		)
+		t.Log(name, "elgamal.C1.X", mt.OldCiphertext.C1.X, "->", mt.NewCiphertext.C1.X)
+		t.Log(name, "elgamal.C1.Y", mt.OldCiphertext.C1.Y, "->", mt.NewCiphertext.C1.Y)
+		t.Log(name, "elgamal.C2.X", mt.OldCiphertext.C2.X, "->", mt.NewCiphertext.C2.X)
+		t.Log(name, "elgamal.C2.Y", mt.OldCiphertext.C2.Y, "->", mt.NewCiphertext.C2.Y)
 	}
 }
 

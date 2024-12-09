@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
+	"github.com/vocdoni/vocdoni-z-sandbox/hash/poseidon"
 )
 
 // ElGamalCiphertext
@@ -81,9 +82,18 @@ func (z *ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
 	}
 }
 
-// BigInt serializes the content into a BigInt
-func (hMsg ElGamalCiphertext) BigInt() *big.Int {
-	return big.NewInt(0) // completely mock, of course
+// Hash returns the hash of ElGamalCiphertext
+// in order: C1.X, C1.Y, C2.X, C2.Y
+func (z *ElGamalCiphertext) Hash() []byte {
+	bi, err := poseidon.MultiPoseidon(
+		z.C1.X,
+		z.C1.Y,
+		z.C2.X,
+		z.C2.Y)
+	if err != nil {
+		panic(err)
+	}
+	return arbo.BigIntToBytes(32, bi)
 }
 
 // ToRTE returns a copy of z, with the points reduced to reduced twisted edwards form

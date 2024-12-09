@@ -81,15 +81,17 @@ func NewState(db db.Database, processID, censusRoot, ballotMode, encryptionKey [
 	if err := tree.Add(KeyEncryptionKey, encryptionKey); err != nil {
 		return State{}, err
 	}
-	if err := tree.Add(KeyResultsAdd, []byte{0x00}); err != nil {
+	if err := tree.Add(KeyResultsAdd, encrypt.NewElGamalCiphertext().Hash()); err != nil {
 		return State{}, err
 	}
-	if err := tree.Add(KeyResultsSub, []byte{0x00}); err != nil {
+	if err := tree.Add(KeyResultsSub, encrypt.NewElGamalCiphertext().Hash()); err != nil {
 		return State{}, err
 	}
 
 	o := State{
-		tree: tree,
+		tree:       tree,
+		resultsAdd: encrypt.NewElGamalCiphertext(),
+		resultsSub: encrypt.NewElGamalCiphertext(),
 	}
 
 	if err := o.StartBatch(); err != nil {
@@ -103,12 +105,6 @@ func (o *State) StartBatch() error {
 	o.Witnesses.NumNewVotes = 0
 	o.Witnesses.NumOverwrites = 0
 	o.Witnesses.AggregatedProof = 0
-	if o.resultsAdd == nil {
-		o.resultsAdd = encrypt.NewElGamalCiphertext()
-	}
-	if o.resultsSub == nil {
-		o.resultsSub = encrypt.NewElGamalCiphertext()
-	}
 	o.ballotSum = encrypt.NewElGamalCiphertext()
 	o.overwriteSum = encrypt.NewElGamalCiphertext()
 	o.ballotCount = 0
@@ -194,21 +190,21 @@ func (o *State) EndBatch() error {
 
 	// update ResultsAdd
 	o.Witnesses.ResultsAdd.OldCiphertext = o.resultsAdd.ToGnark()
+	o.Witnesses.ResultsAdd.NewCiphertext = o.resultsAdd.Add(o.resultsAdd, o.ballotSum).ToGnark()
 	o.Witnesses.ResultsAdd.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsAdd, arbo.BigIntToBytesLE(32, o.resultsAdd.Add(o.resultsAdd, o.ballotSum).BigInt()))
+		KeyResultsAdd, o.resultsAdd.Hash())
 	if err != nil {
-		return err
+		return fmt.Errorf("ResultsAdd: %w", err)
 	}
-	o.Witnesses.ResultsAdd.NewCiphertext = o.resultsAdd.ToGnark()
 
 	// update ResultsSub
 	o.Witnesses.ResultsSub.OldCiphertext = o.resultsSub.ToGnark()
+	o.Witnesses.ResultsSub.NewCiphertext = o.resultsSub.Add(o.resultsSub, o.overwriteSum).ToGnark()
 	o.Witnesses.ResultsSub.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsSub, arbo.BigIntToBytesLE(32, o.resultsSub.Add(o.resultsSub, o.overwriteSum).BigInt()))
+		KeyResultsSub, o.resultsSub.Hash())
 	if err != nil {
-		return err
+		return fmt.Errorf("ResultsSub: %w", err)
 	}
-	o.Witnesses.ResultsSub.NewCiphertext = o.resultsSub.ToGnark()
 
 	// update stats
 	o.Witnesses.NumNewVotes = o.ballotCount
