@@ -39,14 +39,14 @@ type Circuit struct {
 
 // Define declares the circuit's constraints
 func (circuit Circuit) Define(api frontend.API) error {
-	circuit.verifyAggregatedZKProof(api)
-	circuit.verifyMerkleProofs(api, poseidon.Hash)
-	circuit.verifyMerkleTransitions(api)
-	circuit.verifyBallots(api)
+	circuit.VerifyAggregatedZKProof(api)
+	circuit.VerifyMerkleProofs(api, poseidon.Hash)
+	circuit.VerifyMerkleTransitions(api)
+	circuit.VerifyBallots(api)
 	return nil
 }
 
-func (circuit Circuit) verifyAggregatedZKProof(api frontend.API) {
+func (circuit Circuit) VerifyAggregatedZKProof(api frontend.API) {
 	// all of the following values compose the preimage that is hashed
 	// to produce the public input needed to verify AggregatedProof.
 	// they are extracted from the MerkleProofs:
@@ -84,7 +84,7 @@ func (circuit Circuit) verifyAggregatedZKProof(api frontend.API) {
 	api.AssertIsEqual(packedInputs(), 1) // TODO: mock, should actually verify AggregatedZKProof
 }
 
-func (circuit Circuit) verifyMerkleProofs(api frontend.API, hFn arbo.Hash) {
+func (circuit Circuit) VerifyMerkleProofs(api frontend.API, hFn arbo.Hash) {
 	api.Println("verify ProcessID, CensusRoot, BallotMode and EncryptionKey belong to RootHashBefore")
 	circuit.ProcessID.VerifyProof(api, hFn, circuit.RootHashBefore)
 	circuit.CensusRoot.VerifyProof(api, hFn, circuit.RootHashBefore)
@@ -92,7 +92,7 @@ func (circuit Circuit) verifyMerkleProofs(api frontend.API, hFn arbo.Hash) {
 	circuit.EncryptionKey.VerifyProof(api, hFn, circuit.RootHashBefore)
 }
 
-func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
+func (circuit Circuit) VerifyMerkleTransitions(api frontend.API) {
 	// verify chain of tree transitions, order here is fundamental.
 	api.Println("tree transition starts with RootHashBefore:", prettyHex(circuit.RootHashBefore))
 	root := circuit.RootHashBefore
@@ -108,8 +108,8 @@ func (circuit Circuit) verifyMerkleTransitions(api frontend.API) {
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
 
-// verifyBallots counts the ballots using homomorphic encrpytion
-func (circuit Circuit) verifyBallots(api frontend.API) {
+// VerifyBallots counts the ballots using homomorphic encrpytion
+func (circuit Circuit) VerifyBallots(api frontend.API) {
 	ballotSum, overwrittenSum, zero := elgamal.NewCiphertext(), elgamal.NewCiphertext(), elgamal.NewCiphertext()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 

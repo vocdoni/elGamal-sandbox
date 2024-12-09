@@ -1,4 +1,4 @@
-package test
+package statetransition_test
 
 import (
 	"crypto/rand"
