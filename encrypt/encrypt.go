@@ -1,7 +1,9 @@
 package encrypt
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/gob"
 	"fmt"
 	"math/big"
 
@@ -94,6 +96,23 @@ func (z *ElGamalCiphertext) Hash() []byte {
 		panic(err)
 	}
 	return arbo.BigIntToBytes(32, bi)
+}
+
+// Marshal converts ElGamalCiphertext to a byte slice.
+func (z *ElGamalCiphertext) Marshal() ([]byte, error) {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(z); err != nil {
+		return nil, fmt.Errorf("elgamal ciphertext marshal failed: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// Unmarshal populates ElGamalCiphertext from a byte slice.
+func (z *ElGamalCiphertext) Unmarshal(data []byte) error {
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(z); err != nil {
+		return fmt.Errorf("elgamal ciphertext unmarshal failed: %w", err)
+	}
+	return nil
 }
 
 // ToRTE returns a copy of z, with the points reduced to reduced twisted edwards form

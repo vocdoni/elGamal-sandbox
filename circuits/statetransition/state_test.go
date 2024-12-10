@@ -12,21 +12,26 @@ import (
 	"go.vocdoni.io/dvote/tree/arbo"
 )
 
-// absolute hack, need to reimplement this:
-// store the serialized ciphertext in arbo tree, (something simple, concat the bytes)
-// and inside the circuit check the hash(serializedCiphertext) = Leaf
-var memDB map[string]*encrypt.ElGamalCiphertext
-
-func init() {
-	memDB = make(map[string]*encrypt.ElGamalCiphertext)
+func (o *State) oldVote(nullifier []byte) *encrypt.ElGamalCiphertext {
+	data, err := o.dbTx.Get(nullifier)
+	if err != nil {
+		panic(err)
+	}
+	v := &encrypt.ElGamalCiphertext{}
+	if err := v.Unmarshal(data); err != nil {
+		panic(err)
+	}
+	return v
 }
 
-func oldVote(nullifier []byte) *encrypt.ElGamalCiphertext {
-	return memDB[string(nullifier)]
-}
-
-func storeVote(nullifier []byte, vote *encrypt.ElGamalCiphertext) {
-	memDB[string(nullifier)] = vote
+func (o *State) storeVote(nullifier []byte, vote *encrypt.ElGamalCiphertext) {
+	data, err := vote.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	if err := o.dbTx.Set(nullifier, data); err != nil {
+		panic(err)
+	}
 }
 
 // end absolute hack
@@ -48,6 +53,8 @@ var (
 // State represents a state tree
 type State struct {
 	tree      *arbo.Tree
+	db        db.Database
+	dbTx      db.WriteTx
 	Witnesses statetransition.Circuit // witnesses for the snark circuit
 
 	resultsAdd     *encrypt.ElGamalCiphertext
@@ -89,6 +96,8 @@ func NewState(db db.Database, processID, censusRoot, ballotMode, encryptionKey [
 	}
 
 	o := State{
+		db:         db,
+		dbTx:       db.WriteTx(),
 		tree:       tree,
 		resultsAdd: encrypt.NewElGamalCiphertext(),
 		resultsSub: encrypt.NewElGamalCiphertext(),
@@ -102,6 +111,8 @@ func NewState(db db.Database, processID, censusRoot, ballotMode, encryptionKey [
 }
 
 func (o *State) StartBatch() error {
+	o.dbTx = o.db.WriteTx()
+
 	o.Witnesses.NumNewVotes = 0
 	o.Witnesses.NumOverwrites = 0
 	o.Witnesses.AggregatedProof = 0
@@ -139,7 +150,7 @@ func (o *State) AddVote(v Vote) error {
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten vote
 	// so it's later added to circuit.ResultsSub
 	if _, _, err := o.tree.Get(v.nullifier); err == nil {
-		o.overwriteSum.Add(o.overwriteSum, oldVote(v.nullifier))
+		o.overwriteSum.Add(o.overwriteSum, o.oldVote(v.nullifier))
 		o.overwriteCount++
 	}
 
@@ -147,6 +158,8 @@ func (o *State) AddVote(v Vote) error {
 	o.ballotCount++
 
 	o.votes = append(o.votes, v)
+
+	o.storeVote(v.nullifier, v.elgamalBallot)
 	return nil
 }
 
@@ -216,6 +229,10 @@ func (o *State) EndBatch() error {
 		return err
 	}
 
+	if err := o.dbTx.Commit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -266,8 +283,6 @@ func NewVote(nullifier, amount uint64) Vote {
 	v.ballot.SetUint64(amount) // debug
 
 	v.elgamalBallot = NewEncryptedBallot(amount)
-
-	storeVote(v.nullifier, v.elgamalBallot)
 
 	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
