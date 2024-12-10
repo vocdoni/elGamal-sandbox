@@ -7,11 +7,11 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	garbo "github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/vocdoni-z-sandbox/encrypt"
-	"go.vocdoni.io/dvote/tree/arbo"
 )
 
 const (
@@ -77,10 +77,10 @@ func MerkleProofFromArboProof(p ArboProof) MerkleProof {
 		fnc = 1 // non-inclusion
 	}
 	return MerkleProof{
-		Root:     arbo.BytesLEToBigInt(p.Root),
+		Root:     arbo.BytesToBigInt(p.Root),
 		Siblings: padSiblings(p.Siblings),
-		Key:      arbo.BytesLEToBigInt(p.Key),
-		Value:    arbo.BytesLEToBigInt(p.Value),
+		Key:      arbo.BytesToBigInt(p.Key),
+		Value:    arbo.BytesToBigInt(p.Value),
 		Fnc:      fnc,
 	}
 }
@@ -89,7 +89,7 @@ func padSiblings(unpackedSiblings [][]byte) [MaxLevels]frontend.Variable {
 	paddedSiblings := [MaxLevels]frontend.Variable{}
 	for i := range MaxLevels {
 		if i < len(unpackedSiblings) {
-			paddedSiblings[i] = arbo.BytesLEToBigInt(unpackedSiblings[i])
+			paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
 		} else {
 			paddedSiblings[i] = big.NewInt(0)
 		}

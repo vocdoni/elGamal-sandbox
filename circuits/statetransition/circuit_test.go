@@ -18,8 +18,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 
+	"github.com/vocdoni/arbo"
 	"go.vocdoni.io/dvote/db/metadb"
-	"go.vocdoni.io/dvote/tree/arbo"
 )
 
 func TestCircuitCompile(t *testing.T) {
@@ -32,7 +32,7 @@ func TestCircuitCompile(t *testing.T) {
 	}
 }
 
-func TestCircuit(t *testing.T) {
+func TestCircuitProve(t *testing.T) {
 	state, err := NewState(metadb.NewTest(t),
 		[]byte{0xca, 0xfe, 0x00},
 		[]byte{0xca, 0xfe, 0x01},
@@ -124,7 +124,7 @@ func prettyHex(v frontend.Variable) string {
 	}
 	switch v := v.(type) {
 	case (*big.Int):
-		return hex.EncodeToString(arbo.BigIntToBytesLE(32, v)[:4])
+		return hex.EncodeToString(arbo.BigIntToBytes(32, v)[:4])
 	case int:
 		return fmt.Sprintf("%d", v)
 	case []byte:
@@ -155,7 +155,7 @@ func TestCircuitBallotsCompile(t *testing.T) {
 	}
 }
 
-func TestCircuitBallots(t *testing.T) {
+func TestCircuitBallotsProve(t *testing.T) {
 	state, err := NewState(metadb.NewTest(t),
 		[]byte{0xca, 0xfe, 0x00},
 		[]byte{0xca, 0xfe, 0x01},

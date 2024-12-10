@@ -13,7 +13,6 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/ecc/format"
-	"github.com/vocdoni/vocdoni-z-sandbox/hash/poseidon"
 )
 
 // ElGamalCiphertext
@@ -87,15 +86,19 @@ func (z *ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
 // Hash returns the hash of ElGamalCiphertext
 // in order: C1.X, C1.Y, C2.X, C2.Y
 func (z *ElGamalCiphertext) Hash() []byte {
-	bi, err := poseidon.MultiPoseidon(
+	var buf bytes.Buffer
+	for _, bi := range []*big.Int{
 		z.C1.X,
 		z.C1.Y,
 		z.C2.X,
-		z.C2.Y)
-	if err != nil {
-		panic(err)
+		z.C2.Y,
+	} {
+		if _, err := buf.Write(bi.Bytes()); err != nil {
+			panic(err)
+		}
 	}
-	return arbo.BigIntToBytes(32, bi)
+	fmt.Printf("buffer %x\n", buf.Bytes()) // debug
+	return buf.Bytes()
 }
 
 // Marshal converts ElGamalCiphertext to a byte slice.

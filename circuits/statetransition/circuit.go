@@ -40,7 +40,7 @@ type Circuit struct {
 // Define declares the circuit's constraints
 func (circuit Circuit) Define(api frontend.API) error {
 	circuit.VerifyAggregatedZKProof(api)
-	circuit.VerifyMerkleProofs(api, poseidon.Hash)
+	circuit.VerifyMerkleProofs(api, poseidon.MultiHash)
 	circuit.VerifyMerkleTransitions(api)
 	circuit.VerifyBallots(api)
 	return nil

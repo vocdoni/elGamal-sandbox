@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/consensys/gnark/frontend"
-	"go.vocdoni.io/dvote/tree/arbo"
+	"github.com/vocdoni/arbo"
 )
 
 func prettyHex(v frontend.Variable) string {
@@ -16,7 +16,7 @@ func prettyHex(v frontend.Variable) string {
 	}
 	switch v := v.(type) {
 	case (*big.Int):
-		return hex.EncodeToString(arbo.BigIntToBytesLE(32, v)[:4])
+		return hex.EncodeToString(arbo.BigIntToBytes(32, v)[:4])
 	case int:
 		return fmt.Sprintf("%d", v)
 	case []byte:

@@ -6,10 +6,10 @@ import (
 	"math/big"
 
 	"github.com/iden3/go-iden3-crypto/babyjub"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/encrypt"
 	"go.vocdoni.io/dvote/db"
-	"go.vocdoni.io/dvote/tree/arbo"
 )
 
 func (o *State) oldVote(nullifier []byte) *encrypt.ElGamalCiphertext {
@@ -36,7 +36,7 @@ func (o *State) storeVote(nullifier []byte, vote *encrypt.ElGamalCiphertext) {
 
 // end absolute hack
 
-var hashFunc = arbo.HashFunctionPoseidon
+var hashFunc = arbo.HashFunctionMultiPoseidon
 
 var (
 	KeyProcessID     = []byte{0x00}
@@ -178,7 +178,7 @@ func (o *State) EndBatch() error {
 		if i < len(o.votes) {
 			o.Witnesses.Ballot[i].OldCiphertext = o.votes[i].elgamalBallot.ToGnark() // mock
 			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-				o.votes[i].nullifier, arbo.BigIntToBytesLE(32, &o.votes[i].ballot))
+				o.votes[i].nullifier, arbo.BigIntToBytes(32, &o.votes[i].ballot))
 			o.Witnesses.Ballot[i].NewCiphertext = o.votes[i].elgamalBallot.ToGnark()
 		} else {
 			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionElGamalFromNoop(o.tree)
@@ -192,7 +192,7 @@ func (o *State) EndBatch() error {
 	for i := range o.Witnesses.Commitment {
 		if i < len(o.votes) {
 			o.Witnesses.Commitment[i], err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-				o.votes[i].address, arbo.BigIntToBytesLE(32, &o.votes[i].commitment))
+				o.votes[i].address, arbo.BigIntToBytes(32, &o.votes[i].commitment))
 		} else {
 			o.Witnesses.Commitment[i], err = statetransition.MerkleTransitionFromNoop(o.tree)
 		}
@@ -241,7 +241,7 @@ func (o *State) RootAsBigInt() (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return arbo.BytesLEToBigInt(root), nil
+	return arbo.BytesToBigInt(root), nil
 }
 
 // PlaintextVote describes a vote
@@ -255,11 +255,11 @@ type PlaintextVote struct {
 // NewPlaintextVote creates a new vote
 func NewPlaintextVote(nullifier, amount uint64) PlaintextVote {
 	var v PlaintextVote
-	v.nullifier = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+	v.nullifier = arbo.BigIntToBytes(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyNullifiersOffset))) // mock
 	v.ballot.SetUint64(amount)
 
-	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+	v.address = arbo.BigIntToBytes(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
 	v.commitment.SetUint64(amount + 256) // mock
 	return v
@@ -277,14 +277,14 @@ type Vote struct {
 // NewVote creates a new vote
 func NewVote(nullifier, amount uint64) Vote {
 	var v Vote
-	v.nullifier = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+	v.nullifier = arbo.BigIntToBytes(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyNullifiersOffset))) // mock
 
 	v.ballot.SetUint64(amount) // debug
 
 	v.elgamalBallot = NewEncryptedBallot(amount)
 
-	v.address = arbo.BigIntToBytesLE(statetransition.MaxKeyLen,
+	v.address = arbo.BigIntToBytes(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyAddressesOffset))) // mock
 	v.commitment.SetUint64(amount + 256) // mock
 	return v
