@@ -88,10 +88,10 @@ func NewState(db db.Database, processID, censusRoot, ballotMode, encryptionKey [
 	if err := tree.Add(KeyEncryptionKey, encryptionKey); err != nil {
 		return State{}, err
 	}
-	if err := tree.Add(KeyResultsAdd, encrypt.NewElGamalCiphertext().Hash()); err != nil {
+	if err := tree.Add(KeyResultsAdd, encrypt.NewElGamalCiphertext().Serialize()); err != nil {
 		return State{}, err
 	}
-	if err := tree.Add(KeyResultsSub, encrypt.NewElGamalCiphertext().Hash()); err != nil {
+	if err := tree.Add(KeyResultsSub, encrypt.NewElGamalCiphertext().Serialize()); err != nil {
 		return State{}, err
 	}
 
@@ -178,7 +178,7 @@ func (o *State) EndBatch() error {
 		if i < len(o.votes) {
 			o.Witnesses.Ballot[i].OldCiphertext = o.votes[i].elgamalBallot.ToGnark() // mock
 			o.Witnesses.Ballot[i].MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-				o.votes[i].nullifier, arbo.BigIntToBytes(32, &o.votes[i].ballot))
+				o.votes[i].nullifier, o.votes[i].elgamalBallot.Serialize())
 			o.Witnesses.Ballot[i].NewCiphertext = o.votes[i].elgamalBallot.ToGnark()
 		} else {
 			o.Witnesses.Ballot[i], err = statetransition.MerkleTransitionElGamalFromNoop(o.tree)
@@ -205,7 +205,7 @@ func (o *State) EndBatch() error {
 	o.Witnesses.ResultsAdd.OldCiphertext = o.resultsAdd.ToGnark()
 	o.Witnesses.ResultsAdd.NewCiphertext = o.resultsAdd.Add(o.resultsAdd, o.ballotSum).ToGnark()
 	o.Witnesses.ResultsAdd.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsAdd, o.resultsAdd.Hash())
+		KeyResultsAdd, o.resultsAdd.Serialize())
 	if err != nil {
 		return fmt.Errorf("ResultsAdd: %w", err)
 	}
@@ -214,7 +214,7 @@ func (o *State) EndBatch() error {
 	o.Witnesses.ResultsSub.OldCiphertext = o.resultsSub.ToGnark()
 	o.Witnesses.ResultsSub.NewCiphertext = o.resultsSub.Add(o.resultsSub, o.overwriteSum).ToGnark()
 	o.Witnesses.ResultsSub.MerkleTransition, err = statetransition.MerkleTransitionFromAddOrUpdate(o.tree,
-		KeyResultsSub, o.resultsSub.Hash())
+		KeyResultsSub, o.resultsSub.Serialize())
 	if err != nil {
 		return fmt.Errorf("ResultsSub: %w", err)
 	}
@@ -268,7 +268,6 @@ func NewPlaintextVote(nullifier, amount uint64) PlaintextVote {
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	nullifier     []byte                     // key
-	ballot        big.Int                    // value
 	elgamalBallot *encrypt.ElGamalCiphertext // test
 	address       []byte                     // key
 	commitment    big.Int                    // value
@@ -279,8 +278,6 @@ func NewVote(nullifier, amount uint64) Vote {
 	var v Vote
 	v.nullifier = arbo.BigIntToBytes(statetransition.MaxKeyLen,
 		big.NewInt(int64(nullifier)+int64(KeyNullifiersOffset))) // mock
-
-	v.ballot.SetUint64(amount) // debug
 
 	v.elgamalBallot = NewEncryptedBallot(amount)
 

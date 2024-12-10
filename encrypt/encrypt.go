@@ -83,9 +83,9 @@ func (z *ElGamalCiphertext) ToGnark() elgamal.Ciphertext {
 	}
 }
 
-// Hash returns the hash of ElGamalCiphertext
-// in order: C1.X, C1.Y, C2.X, C2.Y
-func (z *ElGamalCiphertext) Hash() []byte {
+// Serialize returns a slice of len 4*32 bytes,
+// representing the C1.X, C1.Y, C2.X, C2.Y as little-endian.
+func (z *ElGamalCiphertext) Serialize() []byte {
 	var buf bytes.Buffer
 	for _, bi := range []*big.Int{
 		z.C1.X,
@@ -93,12 +93,35 @@ func (z *ElGamalCiphertext) Hash() []byte {
 		z.C2.X,
 		z.C2.Y,
 	} {
-		if _, err := buf.Write(bi.Bytes()); err != nil {
+		if _, err := buf.Write(arbo.BigIntToBytes(32, bi)); err != nil {
 			panic(err)
 		}
 	}
 	fmt.Printf("buffer %x\n", buf.Bytes()) // debug
 	return buf.Bytes()
+}
+
+// Deserialize reconstructs an ElGamalCiphertext from a slice of bytes.
+// The input must be of len 4*32 bytes, representing the C1.X, C1.Y, C2.X, C2.Y as little-endian.
+func (z *ElGamalCiphertext) Deserialize(data []byte) {
+	const fieldSize = 32 // Each field element is 32 bytes
+	expectedLen := 4 * fieldSize
+
+	// Validate the input length
+	if len(data) != expectedLen {
+		panic(fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), expectedLen))
+	}
+
+	// Helper function to extract *big.Int from a 32-byte slice
+	readBigInt := func(offset int) *big.Int {
+		return arbo.BytesToBigInt(data[offset : offset+fieldSize])
+	}
+
+	// Deserialize each field
+	z.C1.X = readBigInt(0 * fieldSize)
+	z.C1.Y = readBigInt(1 * fieldSize)
+	z.C2.X = readBigInt(2 * fieldSize)
+	z.C2.Y = readBigInt(3 * fieldSize)
 }
 
 // Marshal converts ElGamalCiphertext to a byte slice.
