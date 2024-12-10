@@ -12,9 +12,10 @@ require (
 	github.com/iden3/go-iden3-crypto v0.0.17
 	github.com/iden3/go-rapidsnark/prover v0.0.12
 	github.com/iden3/go-rapidsnark/witness v0.0.6
+	github.com/rs/zerolog v1.33.0
 	github.com/vocdoni/arbo v0.0.0-20241120112623-8e1cc943f444
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241118090531-f24bf0de0e2f
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241202120611-440afa35dda9
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241203110428-f00acce3635e
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 )
 
@@ -198,6 +199,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mattn/go-sqlite3 v1.14.23 // indirect
+	github.com/mdehoog/poseidon v0.0.0-20240301020106-ba6c393a5802 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/dns v1.1.59 // indirect
@@ -263,7 +265,6 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/ronanh/intcomp v1.1.0 // indirect
 	github.com/rs/cors v1.11.0 // indirect
-	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/samber/lo v1.39.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/sethvargo/go-retry v0.2.4 // indirect
