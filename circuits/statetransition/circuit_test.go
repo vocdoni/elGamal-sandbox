@@ -110,10 +110,12 @@ func debugLog(t *testing.T, witness *statetransition.Circuit) {
 		t.Log(name, "transitioned", "(root", prettyHex(mt.OldRoot), "->", prettyHex(mt.NewRoot), ")",
 			"value", mt.OldValue, "->", mt.NewValue,
 		)
-		t.Log(name, "elgamal.C1.X", mt.OldCiphertext.C1.X, "->", mt.NewCiphertext.C1.X)
-		t.Log(name, "elgamal.C1.Y", mt.OldCiphertext.C1.Y, "->", mt.NewCiphertext.C1.Y)
-		t.Log(name, "elgamal.C2.X", mt.OldCiphertext.C2.X, "->", mt.NewCiphertext.C2.X)
-		t.Log(name, "elgamal.C2.Y", mt.OldCiphertext.C2.Y, "->", mt.NewCiphertext.C2.Y)
+		for i := range mt.OldCiphertexts {
+			t.Log(name, i, "elgamal.C1.X", mt.OldCiphertexts[i].C1.X, "->", mt.NewCiphertexts[i].C1.X)
+			t.Log(name, i, "elgamal.C1.Y", mt.OldCiphertexts[i].C1.Y, "->", mt.NewCiphertexts[i].C1.Y)
+			t.Log(name, i, "elgamal.C2.X", mt.OldCiphertexts[i].C2.X, "->", mt.NewCiphertexts[i].C2.X)
+			t.Log(name, i, "elgamal.C2.Y", mt.OldCiphertexts[i].C2.Y, "->", mt.NewCiphertexts[i].C2.Y)
+		}
 	}
 }
 
@@ -266,7 +268,12 @@ func newMockVote(index, amount int64) *state.Vote {
 		panic(fmt.Errorf("error generating public key: %v", err))
 	}
 
-	ballot, err := elgamal.NewCiphertext(publicKey).Encrypt(big.NewInt(int64(amount)), publicKey, nil)
+	ballot, err := elgamal.NewCiphertexts(publicKey).Encrypt(
+		[elgamal.NumCiphertexts]*big.Int{
+			big.NewInt(int64(amount)),
+			big.NewInt(int64(amount)),
+		},
+		publicKey, nil)
 	if err != nil {
 		panic(fmt.Errorf("error encrypting: %v", err))
 	}
