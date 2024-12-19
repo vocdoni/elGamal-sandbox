@@ -13,6 +13,95 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 )
 
+const NumCiphertexts = 2
+
+type Ciphertexts [NumCiphertexts]*Ciphertext
+
+func NewCiphertexts(curve ecc.Point) *Ciphertexts {
+	cs := &Ciphertexts{}
+	for i := range cs {
+		cs[i] = NewCiphertext(curve)
+	}
+	return cs
+}
+
+// Encrypt encrypts a message using the public key provided as elliptic curve point.
+// The randomness k can be provided or nil to generate a new one.
+func (cs *Ciphertexts) Encrypt(message [NumCiphertexts]*big.Int, publicKey ecc.Point, k *big.Int) (*Ciphertexts, error) {
+	for i := range cs {
+		if _, err := cs[i].Encrypt(message[i], publicKey, k); err != nil {
+			return nil, err
+		}
+	}
+	return cs, nil
+}
+
+// Add adds two Ciphertexts and stores the result in the receiver, which is also returned.
+func (cs *Ciphertexts) Add(x, y *Ciphertexts) *Ciphertexts {
+	for i := range cs {
+		cs[i].Add(x[i], y[i])
+	}
+	return cs
+}
+
+// Serialize returns a slice of len N*4*32 bytes,
+// representing each Ciphertext C1.X, C1.Y, C2.X, C2.Y as little-endian,
+// in reduced twisted edwards form.
+func (cs *Ciphertexts) Serialize() []byte {
+	var buf bytes.Buffer
+	for _, z := range cs {
+		buf.Write(z.Serialize())
+	}
+	return buf.Bytes()
+}
+
+// Deserialize reconstructs a Ciphertexts from a slice of bytes.
+// The input must be of len N*4*32 bytes (otherwise it returns an error),
+// representing each Ciphertext C1.X, C1.Y, C2.X, C2.Y as little-endian,
+// in reduced twisted edwards form.
+func (cs *Ciphertexts) Deserialize(data []byte) error {
+	// Validate the input length
+	if len(data) != NumCiphertexts*4*sizePointCoord {
+		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), NumCiphertexts*4*sizePointCoord)
+	}
+	for i := range cs {
+		err := cs[i].Deserialize(data[i*sizePointCoord : (i+1)*sizePointCoord])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TODO: implement Marshal, Unmarshal, String for Ciphertexts
+// // Marshal converts Ciphertexts to a byte slice.
+// func (z *Ciphertexts) Marshal() ([]byte, error) {
+// 	return json.Marshal(z)
+// }
+
+// // Unmarshal populates Ciphertexts from a byte slice.
+// func (z *Ciphertexts) Unmarshal(data []byte) error {
+// 	return json.Unmarshal(data, z)
+// }
+
+// // String returns a string representation of the Ciphertexts.
+// func (z *Ciphertexts) String() string {
+// 	if z == nil || z.C1 == nil || z.C2 == nil {
+// 		return "{C1: nil, C2: nil}"
+// 	}
+// 	return fmt.Sprintf("{C1: %s, C2: %s}", z.C1.String(), z.C2.String())
+// }
+
+// ToGnark returns cs as the struct used by gnark,
+// with the points in reduced twisted edwards format
+func (cs *Ciphertexts) ToGnark() *gelgamal.Ciphertexts {
+	gcs := &gelgamal.Ciphertexts{}
+	for i := range cs {
+		gcs[i] = cs[i].ToGnark()
+	}
+	return gcs
+}
+
 // size in bytes needed to serialize an ecc.Point coord
 const sizePointCoord = 32
 
@@ -117,11 +206,11 @@ func (z *Ciphertext) String() string {
 
 // ToGnark returns z as the struct used by gnark,
 // with the points in reduced twisted edwards format
-func (z *Ciphertext) ToGnark() gelgamal.Ciphertext {
+func (z *Ciphertext) ToGnark() *gelgamal.Ciphertext {
 	// TODO: we wouldn't need the format conversion if Point() returns the correct format
 	c1x, c1y := format.FromTEtoRTE(z.C1.Point())
 	c2x, c2y := format.FromTEtoRTE(z.C2.Point())
-	return gelgamal.Ciphertext{
+	return &gelgamal.Ciphertext{
 		C1: twistededwards.Point{X: c1x, Y: c1y},
 		C2: twistededwards.Point{X: c2x, Y: c2y},
 	}

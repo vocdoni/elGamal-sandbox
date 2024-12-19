@@ -64,8 +64,8 @@ func GenerateWitnesses(o *state.State) (*statetransition.Circuit, error) {
 	}
 
 	// update ResultsAdd
-	witness.ResultsAdd.OldCiphertext = o.ResultsAdd.ToGnark()
-	witness.ResultsAdd.NewCiphertext = o.ResultsAdd.Add(o.ResultsAdd, o.BallotSum).ToGnark()
+	witness.ResultsAdd.OldCiphertexts = o.ResultsAdd.ToGnark()
+	witness.ResultsAdd.NewCiphertexts = o.ResultsAdd.Add(o.ResultsAdd, o.BallotSum).ToGnark()
 	witness.ResultsAdd, err = o.MerkleTransitionFromAddOrUpdate(
 		state.KeyResultsAdd, o.ResultsAdd.Serialize())
 	if err != nil {
@@ -73,8 +73,8 @@ func GenerateWitnesses(o *state.State) (*statetransition.Circuit, error) {
 	}
 
 	// update ResultsSub
-	witness.ResultsSub.OldCiphertext = o.ResultsSub.ToGnark()
-	witness.ResultsSub.NewCiphertext = o.ResultsSub.Add(o.ResultsSub, o.OverwriteSum).ToGnark()
+	witness.ResultsSub.OldCiphertexts = o.ResultsSub.ToGnark()
+	witness.ResultsSub.NewCiphertexts = o.ResultsSub.Add(o.ResultsSub, o.OverwriteSum).ToGnark()
 	witness.ResultsSub, err = o.MerkleTransitionFromAddOrUpdate(
 		state.KeyResultsSub, o.ResultsSub.Serialize())
 	if err != nil {

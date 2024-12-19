@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/vocdoni/arbo"
@@ -43,10 +44,10 @@ type State struct {
 	dbTx      db.WriteTx
 
 	// TODO: unexport these, add ArboProofs and only export those via a method
-	ResultsAdd     *elgamal.Ciphertext
-	ResultsSub     *elgamal.Ciphertext
-	BallotSum      *elgamal.Ciphertext
-	OverwriteSum   *elgamal.Ciphertext
+	ResultsAdd     *elgamal.Ciphertexts
+	ResultsSub     *elgamal.Ciphertexts
+	BallotSum      *elgamal.Ciphertexts
+	OverwriteSum   *elgamal.Ciphertexts
 	ballotCount    int
 	overwriteCount int
 	votes          []*Vote
@@ -87,10 +88,10 @@ func (o *State) Initialize(censusRoot, ballotMode, encryptionKey []byte) error {
 	if err := o.tree.Add(KeyEncryptionKey, encryptionKey); err != nil {
 		return err
 	}
-	if err := o.tree.Add(KeyResultsAdd, elgamal.NewCiphertext(Curve).Serialize()); err != nil {
+	if err := o.tree.Add(KeyResultsAdd, elgamal.NewCiphertexts(Curve).Serialize()); err != nil {
 		return err
 	}
-	if err := o.tree.Add(KeyResultsSub, elgamal.NewCiphertext(Curve).Serialize()); err != nil {
+	if err := o.tree.Add(KeyResultsSub, elgamal.NewCiphertexts(Curve).Serialize()); err != nil {
 		return err
 	}
 	return nil
@@ -106,10 +107,10 @@ func (o *State) Close() error {
 func (o *State) StartBatch() error {
 	o.dbTx = o.db.WriteTx()
 	if o.ResultsAdd == nil {
-		o.ResultsAdd = elgamal.NewCiphertext(Curve)
+		o.ResultsAdd = elgamal.NewCiphertexts(Curve)
 	}
 	if o.ResultsSub == nil {
-		o.ResultsSub = elgamal.NewCiphertext(Curve)
+		o.ResultsSub = elgamal.NewCiphertexts(Curve)
 	}
 
 	{
@@ -118,7 +119,7 @@ func (o *State) StartBatch() error {
 			return err
 		}
 		if err := o.ResultsAdd.Deserialize(v); err != nil {
-			return err
+			return fmt.Errorf("ResultsAdd: %w", err)
 		}
 	}
 	{
@@ -127,12 +128,12 @@ func (o *State) StartBatch() error {
 			return err
 		}
 		if err := o.ResultsSub.Deserialize(v); err != nil {
-			return err
+			return fmt.Errorf("ResultsSub: %w", err)
 		}
 	}
 
-	o.BallotSum = elgamal.NewCiphertext(Curve)
-	o.OverwriteSum = elgamal.NewCiphertext(Curve)
+	o.BallotSum = elgamal.NewCiphertexts(Curve)
+	o.OverwriteSum = elgamal.NewCiphertexts(Curve)
 	o.ballotCount = 0
 	o.overwriteCount = 0
 	o.votes = []*Vote{}
