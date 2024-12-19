@@ -148,10 +148,10 @@ type MerkleTransition struct {
 	Fnc1     frontend.Variable
 
 	// TODO: replace Is*ElGamal by a check on len(Ciphertext) or something?
-	IsOldElGamal  frontend.Variable
-	IsNewElGamal  frontend.Variable
-	OldCiphertext gelgamal.Ciphertext
-	NewCiphertext gelgamal.Ciphertext
+	IsOldElGamal   frontend.Variable
+	IsNewElGamal   frontend.Variable
+	OldCiphertexts *gelgamal.Ciphertexts
+	NewCiphertexts *gelgamal.Ciphertexts
 }
 
 // MerkleTransitionFromArboProofPair generates a MerkleTransition based on the pair of proofs passed
@@ -182,20 +182,20 @@ func MerkleTransitionFromArboProofPair(before, after *ArboProof) MerkleTransitio
 	mpBefore := MerkleProofFromArboProof(before)
 	mpAfter := MerkleProofFromArboProof(after)
 	return MerkleTransition{
-		Siblings:      mpBefore.Siblings,
-		OldRoot:       mpBefore.Root,
-		OldKey:        mpBefore.Key,
-		OldValue:      mpBefore.Value,
-		NewRoot:       mpAfter.Root,
-		NewKey:        mpAfter.Key,
-		NewValue:      mpAfter.Value,
-		IsOld0:        isOld0,
-		Fnc0:          fnc0,
-		Fnc1:          fnc1,
-		IsOldElGamal:  0,
-		IsNewElGamal:  0,
-		OldCiphertext: *gelgamal.NewCiphertext(),
-		NewCiphertext: *gelgamal.NewCiphertext(),
+		Siblings:       mpBefore.Siblings,
+		OldRoot:        mpBefore.Root,
+		OldKey:         mpBefore.Key,
+		OldValue:       mpBefore.Value,
+		NewRoot:        mpAfter.Root,
+		NewKey:         mpAfter.Key,
+		NewValue:       mpAfter.Value,
+		IsOld0:         isOld0,
+		Fnc0:           fnc0,
+		Fnc1:           fnc1,
+		IsOldElGamal:   0,
+		IsNewElGamal:   0,
+		OldCiphertexts: gelgamal.NewCiphertexts(),
+		NewCiphertexts: gelgamal.NewCiphertexts(),
 	}
 }
 
@@ -208,22 +208,22 @@ func (o *State) MerkleTransitionFromAddOrUpdate(k []byte, v []byte) (MerkleTrans
 	}
 	mp := MerkleTransitionFromArboProofPair(mpBefore, mpAfter)
 
-	oldCiphertext, newCiphertext := elgamal.NewCiphertext(Curve), elgamal.NewCiphertext(Curve)
+	oldCiphertexts, newCiphertexts := elgamal.NewCiphertexts(Curve), elgamal.NewCiphertexts(Curve)
 	if len(mpBefore.Value) > 32 {
-		if err := oldCiphertext.Deserialize(mpBefore.Value); err != nil {
+		if err := oldCiphertexts.Deserialize(mpBefore.Value); err != nil {
 			return MerkleTransition{}, err
 		}
 		mp.IsOldElGamal = 1
 	}
 	if len(mpAfter.Value) > 32 {
-		if err := newCiphertext.Deserialize(mpAfter.Value); err != nil {
+		if err := newCiphertexts.Deserialize(mpAfter.Value); err != nil {
 			return MerkleTransition{}, err
 		}
 		mp.IsNewElGamal = 1
 	}
 
-	mp.OldCiphertext = oldCiphertext.ToGnark()
-	mp.NewCiphertext = newCiphertext.ToGnark()
+	mp.OldCiphertexts = oldCiphertexts.ToGnark()
+	mp.NewCiphertexts = newCiphertexts.ToGnark()
 
 	return mp, nil
 }
@@ -257,11 +257,11 @@ func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot f
 	api.AssertIsEqual(oldRoot, mp.OldRoot)
 
 	hash1Old := api.Select(mp.IsOldElGamal,
-		smt.Hash1(api, hFn, mp.OldKey, mp.OldCiphertext.Serialize()...),
+		smt.Hash1(api, hFn, mp.OldKey, mp.OldCiphertexts.Serialize()...),
 		smt.Hash1(api, hFn, mp.OldKey, mp.OldValue),
 	)
 	hash1New := api.Select(mp.IsNewElGamal,
-		smt.Hash1(api, hFn, mp.NewKey, mp.NewCiphertext.Serialize()...),
+		smt.Hash1(api, hFn, mp.NewKey, mp.NewCiphertexts.Serialize()...),
 		smt.Hash1(api, hFn, mp.NewKey, mp.NewValue),
 	)
 
