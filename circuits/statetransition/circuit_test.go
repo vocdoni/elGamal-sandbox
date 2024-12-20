@@ -1,11 +1,9 @@
 package statetransition_test
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"os"
-	"reflect"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -18,6 +16,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 
 	"github.com/vocdoni/arbo"
 	"go.vocdoni.io/dvote/db/metadb"
@@ -99,15 +98,32 @@ func TestCircuitProve(t *testing.T) {
 func debugLog(t *testing.T, witness *statetransition.Circuit) {
 	// js, _ := json.MarshalIndent(witness, "", "  ")
 	// fmt.Printf("\n\n%s\n\n", js)
-	t.Log("public: RootHashBefore", prettyHex(witness.RootHashBefore))
-	t.Log("public: RootHashAfter", prettyHex(witness.RootHashAfter))
-	t.Log("public: NumVotes", prettyHex(witness.NumNewVotes))
-	t.Log("public: NumOverwrites", prettyHex(witness.NumOverwrites))
+	t.Log("public: RootHashBefore", util.PrettyHex(witness.RootHashBefore))
+	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
+	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
+	t.Log("public: NumOverwrites", util.PrettyHex(witness.NumOverwrites))
+	for name, mts := range map[string][statetransition.VoteBatchSize]state.MerkleTransition{
+		"Ballot":     witness.Ballot,
+		"Commitment": witness.Commitment,
+	} {
+		for _, mt := range mts {
+			t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
+				"value", mt.OldValue, "->", mt.NewValue,
+			)
+			for i := range mt.OldCiphertexts {
+				t.Log(name, i, "elgamal.C1.X", mt.OldCiphertexts[i].C1.X, "->", mt.NewCiphertexts[i].C1.X)
+				t.Log(name, i, "elgamal.C1.Y", mt.OldCiphertexts[i].C1.Y, "->", mt.NewCiphertexts[i].C1.Y)
+				t.Log(name, i, "elgamal.C2.X", mt.OldCiphertexts[i].C2.X, "->", mt.NewCiphertexts[i].C2.X)
+				t.Log(name, i, "elgamal.C2.Y", mt.OldCiphertexts[i].C2.Y, "->", mt.NewCiphertexts[i].C2.Y)
+			}
+		}
+	}
+
 	for name, mt := range map[string]state.MerkleTransition{
 		"ResultsAdd": witness.ResultsAdd,
 		"ResultsSub": witness.ResultsSub,
 	} {
-		t.Log(name, "transitioned", "(root", prettyHex(mt.OldRoot), "->", prettyHex(mt.NewRoot), ")",
+		t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
 			"value", mt.OldValue, "->", mt.NewValue,
 		)
 		for i := range mt.OldCiphertexts {
@@ -116,24 +132,6 @@ func debugLog(t *testing.T, witness *statetransition.Circuit) {
 			t.Log(name, i, "elgamal.C2.X", mt.OldCiphertexts[i].C2.X, "->", mt.NewCiphertexts[i].C2.X)
 			t.Log(name, i, "elgamal.C2.Y", mt.OldCiphertexts[i].C2.Y, "->", mt.NewCiphertexts[i].C2.Y)
 		}
-	}
-}
-
-func prettyHex(v frontend.Variable) string {
-	type hasher interface {
-		HashCode() [16]byte
-	}
-	switch v := v.(type) {
-	case (*big.Int):
-		return hex.EncodeToString(arbo.BigIntToBytes(32, v)[:4])
-	case int:
-		return fmt.Sprintf("%d", v)
-	case []byte:
-		return fmt.Sprintf("%x", v[:4])
-	case hasher:
-		return fmt.Sprintf("%x", v.HashCode())
-	default:
-		return fmt.Sprintf("(%v)=%+v", reflect.TypeOf(v), v)
 	}
 }
 
@@ -271,7 +269,7 @@ func newMockVote(index, amount int64) *state.Vote {
 	ballot, err := elgamal.NewCiphertexts(publicKey).Encrypt(
 		[elgamal.NumCiphertexts]*big.Int{
 			big.NewInt(int64(amount)),
-			big.NewInt(int64(amount)),
+			big.NewInt(int64(amount + 1)),
 		},
 		publicKey, nil)
 	if err != nil {

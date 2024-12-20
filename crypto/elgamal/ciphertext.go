@@ -106,7 +106,7 @@ func (cs *Ciphertexts) Deserialize(data []byte) error {
 func (cs *Ciphertexts) ToGnark() *gelgamal.Ciphertexts {
 	gcs := &gelgamal.Ciphertexts{}
 	for i := range cs {
-		gcs[i] = cs[i].ToGnark()
+		gcs[i] = *cs[i].ToGnark()
 	}
 	return gcs
 }
