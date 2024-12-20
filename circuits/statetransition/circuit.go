@@ -5,6 +5,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
 var HashFn = utils.MiMCHasher
@@ -96,7 +97,7 @@ func (circuit Circuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
 
 func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher) {
 	// verify chain of tree transitions, order here is fundamental.
-	api.Println("tree transition starts with RootHashBefore:", prettyHex(circuit.RootHashBefore))
+	api.Println("tree transition starts with RootHashBefore:", util.PrettyHex(circuit.RootHashBefore))
 	root := circuit.RootHashBefore
 	for i := range circuit.Ballot {
 		root = circuit.Ballot[i].Verify(api, hFn, root)
@@ -106,32 +107,32 @@ func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hashe
 	}
 	root = circuit.ResultsAdd.Verify(api, hFn, root)
 	root = circuit.ResultsSub.Verify(api, hFn, root)
-	api.Println("and final root is", prettyHex(root), "should be equal to RootHashAfter", prettyHex(circuit.RootHashAfter))
+	api.Println("and final root is", util.PrettyHex(root), "should be equal to RootHashAfter", util.PrettyHex(circuit.RootHashAfter))
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
 
 // VerifyBallots counts the ballots using homomorphic encrpytion
 func (circuit Circuit) VerifyBallots(api frontend.API) {
-	ballotSum, overwrittenSum, zero := elgamal.NewCiphertext(), elgamal.NewCiphertext(), elgamal.NewCiphertext()
+	ballotSum, overwrittenSum, zero := elgamal.NewCiphertexts(), elgamal.NewCiphertexts(), elgamal.NewCiphertexts()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
 	for _, b := range circuit.Ballot {
 		// TODO: check that Hash(NewCiphertext) matches b.NewValue
 		// and Hash(OldCiphertext) matches b.OldValue
 		ballotSum.Add(api, ballotSum,
-			elgamal.NewCiphertext().Select(api, b.IsInsertOrUpdate(api), &b.NewCiphertext, zero))
+			elgamal.NewCiphertexts().Select(api, b.IsInsertOrUpdate(api), &b.NewCiphertexts, zero))
 
 		overwrittenSum.Add(api, overwrittenSum,
-			elgamal.NewCiphertext().Select(api, b.IsUpdate(api), &b.OldCiphertext, zero))
+			elgamal.NewCiphertexts().Select(api, b.IsUpdate(api), &b.OldCiphertexts, zero))
 
 		ballotCount = api.Add(ballotCount, api.Select(b.IsInsertOrUpdate(api), 1, 0))
 		overwrittenCount = api.Add(overwrittenCount, api.Select(b.IsUpdate(api), 1, 0))
 	}
 
-	circuit.ResultsAdd.NewCiphertext.AssertIsEqual(api,
-		circuit.ResultsAdd.OldCiphertext.Add(api, &circuit.ResultsAdd.OldCiphertext, ballotSum))
-	circuit.ResultsSub.NewCiphertext.AssertIsEqual(api,
-		circuit.ResultsSub.OldCiphertext.Add(api, &circuit.ResultsSub.OldCiphertext, overwrittenSum))
+	circuit.ResultsAdd.NewCiphertexts.AssertIsEqual(api,
+		circuit.ResultsAdd.OldCiphertexts.Add(api, &circuit.ResultsAdd.OldCiphertexts, ballotSum))
+	circuit.ResultsSub.NewCiphertexts.AssertIsEqual(api,
+		circuit.ResultsSub.OldCiphertexts.Add(api, &circuit.ResultsSub.OldCiphertexts, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
 	api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
 }

@@ -2,20 +2,19 @@ package state
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/arbo"
 	gelgamal "github.com/vocdoni/gnark-crypto-primitives/elgamal"
+	"github.com/vocdoni/gnark-crypto-primitives/utils"
 
 	garbo "github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
-	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
 // ArboProof stores the proof in arbo native types
@@ -95,6 +94,18 @@ func (o *State) GenMerkleProof(k []byte) (MerkleProof, error) {
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
 func MerkleProofFromArboProof(p *ArboProof) MerkleProof {
+	padSiblings := func(unpackedSiblings [][]byte) [MaxLevels]frontend.Variable {
+		paddedSiblings := [MaxLevels]frontend.Variable{}
+		for i := range MaxLevels {
+			if i < len(unpackedSiblings) {
+				paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
+			} else {
+				paddedSiblings[i] = big.NewInt(0)
+			}
+		}
+		return paddedSiblings
+	}
+
 	fnc := 0 // inclusion
 	if !p.Existence {
 		fnc = 1 // non-inclusion
@@ -108,27 +119,21 @@ func MerkleProofFromArboProof(p *ArboProof) MerkleProof {
 	}
 }
 
-func padSiblings(unpackedSiblings [][]byte) [MaxLevels]frontend.Variable {
-	paddedSiblings := [MaxLevels]frontend.Variable{}
-	for i := range MaxLevels {
-		if i < len(unpackedSiblings) {
-			paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
-		} else {
-			paddedSiblings[i] = big.NewInt(0)
-		}
-	}
-	return paddedSiblings
-}
-
 // Verify uses garbo.CheckInclusionProof to verify that:
 //   - mp.Root matches passed root
 //   - Key + Value belong to Root
 func (mp *MerkleProof) VerifyProof(api frontend.API, hFn utils.Hasher, root frontend.Variable) {
+	api.Println("verify proof", mp.String()) // TODO: remove this debug log
+
 	api.AssertIsEqual(root, mp.Root)
 
 	if err := garbo.CheckInclusionProof(api, hFn, mp.Key, mp.Value, mp.Root, mp.Siblings[:]); err != nil {
 		panic(err)
 	}
+}
+
+func (mp *MerkleProof) String() string {
+	return fmt.Sprint(mp.Key, "=", mp.Value, " -> ", util.PrettyHex(mp.Root))
 }
 
 // MerkleTransition stores a pair of leaves and root hashes, and a single path common to both proofs
@@ -148,10 +153,10 @@ type MerkleTransition struct {
 	Fnc1     frontend.Variable
 
 	// TODO: replace Is*ElGamal by a check on len(Ciphertext) or something?
-	IsOldElGamal  frontend.Variable
-	IsNewElGamal  frontend.Variable
-	OldCiphertext gelgamal.Ciphertext
-	NewCiphertext gelgamal.Ciphertext
+	IsOldElGamal   frontend.Variable
+	IsNewElGamal   frontend.Variable
+	OldCiphertexts gelgamal.Ciphertexts
+	NewCiphertexts gelgamal.Ciphertexts
 }
 
 // MerkleTransitionFromArboProofPair generates a MerkleTransition based on the pair of proofs passed
@@ -182,20 +187,20 @@ func MerkleTransitionFromArboProofPair(before, after *ArboProof) MerkleTransitio
 	mpBefore := MerkleProofFromArboProof(before)
 	mpAfter := MerkleProofFromArboProof(after)
 	return MerkleTransition{
-		Siblings:      mpBefore.Siblings,
-		OldRoot:       mpBefore.Root,
-		OldKey:        mpBefore.Key,
-		OldValue:      mpBefore.Value,
-		NewRoot:       mpAfter.Root,
-		NewKey:        mpAfter.Key,
-		NewValue:      mpAfter.Value,
-		IsOld0:        isOld0,
-		Fnc0:          fnc0,
-		Fnc1:          fnc1,
-		IsOldElGamal:  0,
-		IsNewElGamal:  0,
-		OldCiphertext: *gelgamal.NewCiphertext(),
-		NewCiphertext: *gelgamal.NewCiphertext(),
+		Siblings:       mpBefore.Siblings,
+		OldRoot:        mpBefore.Root,
+		OldKey:         mpBefore.Key,
+		OldValue:       mpBefore.Value,
+		NewRoot:        mpAfter.Root,
+		NewKey:         mpAfter.Key,
+		NewValue:       mpAfter.Value,
+		IsOld0:         isOld0,
+		Fnc0:           fnc0,
+		Fnc1:           fnc1,
+		IsOldElGamal:   0,
+		IsNewElGamal:   0,
+		OldCiphertexts: *gelgamal.NewCiphertexts(),
+		NewCiphertexts: *gelgamal.NewCiphertexts(),
 	}
 }
 
@@ -208,22 +213,22 @@ func (o *State) MerkleTransitionFromAddOrUpdate(k []byte, v []byte) (MerkleTrans
 	}
 	mp := MerkleTransitionFromArboProofPair(mpBefore, mpAfter)
 
-	oldCiphertext, newCiphertext := elgamal.NewCiphertext(Curve), elgamal.NewCiphertext(Curve)
+	oldCiphertexts, newCiphertexts := elgamal.NewCiphertexts(Curve), elgamal.NewCiphertexts(Curve)
 	if len(mpBefore.Value) > 32 {
-		if err := oldCiphertext.Deserialize(mpBefore.Value); err != nil {
+		if err := oldCiphertexts.Deserialize(mpBefore.Value); err != nil {
 			return MerkleTransition{}, err
 		}
 		mp.IsOldElGamal = 1
 	}
 	if len(mpAfter.Value) > 32 {
-		if err := newCiphertext.Deserialize(mpAfter.Value); err != nil {
+		if err := newCiphertexts.Deserialize(mpAfter.Value); err != nil {
 			return MerkleTransition{}, err
 		}
 		mp.IsNewElGamal = 1
 	}
 
-	mp.OldCiphertext = oldCiphertext.ToGnark()
-	mp.NewCiphertext = newCiphertext.ToGnark()
+	mp.OldCiphertexts = *oldCiphertexts.ToGnark()
+	mp.NewCiphertexts = *newCiphertexts.ToGnark()
 
 	return mp, nil
 }
@@ -252,16 +257,16 @@ func (o *State) MerkleTransitionFromNoop() (MerkleTransition, error) {
 //
 // and returns mp.NewRoot
 func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot frontend.Variable) frontend.Variable {
-	mp.printDebugLog(api)
+	api.Println("verify transition", mp.String()) // TODO: remove this debug log
 
 	api.AssertIsEqual(oldRoot, mp.OldRoot)
 
 	hash1Old := api.Select(mp.IsOldElGamal,
-		smt.Hash1(api, hFn, mp.OldKey, mp.OldCiphertext.Serialize()...),
+		smt.Hash1(api, hFn, mp.OldKey, mp.OldCiphertexts.Serialize()...),
 		smt.Hash1(api, hFn, mp.OldKey, mp.OldValue),
 	)
 	hash1New := api.Select(mp.IsNewElGamal,
-		smt.Hash1(api, hFn, mp.NewKey, mp.NewCiphertext.Serialize()...),
+		smt.Hash1(api, hFn, mp.NewKey, mp.NewCiphertexts.Serialize()...),
 		smt.Hash1(api, hFn, mp.NewKey, mp.NewValue),
 	)
 
@@ -281,28 +286,9 @@ func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot f
 	return mp.NewRoot
 }
 
-// TODO: remove this debug log
-func (mp *MerkleTransition) printDebugLog(api frontend.API) {
-	prettyHex := func(v frontend.Variable) string {
-		type hasher interface {
-			HashCode() [16]byte
-		}
-		switch v := v.(type) {
-		case (*big.Int):
-			return hex.EncodeToString(arbo.BigIntToBytes(32, v)[:4])
-		case int:
-			return fmt.Sprintf("%d", v)
-		case []byte:
-			return fmt.Sprintf("%x", v[:4])
-		case hasher:
-			return fmt.Sprintf("%x", v.HashCode())
-		default:
-			return fmt.Sprintf("(%v)=%+v", reflect.TypeOf(v), v)
-		}
-	}
-
-	api.Println("verify transition", prettyHex(mp.OldRoot), "->", prettyHex(mp.NewRoot), "|",
-		mp.OldKey, "=", mp.OldValue, "->", mp.NewKey, "=", mp.NewValue)
+func (mp *MerkleTransition) String() string {
+	return fmt.Sprint(util.PrettyHex(mp.OldRoot), " -> ", util.PrettyHex(mp.NewRoot), " | ",
+		mp.OldKey, "=", mp.OldValue, " -> ", mp.NewKey, "=", mp.NewValue)
 }
 
 // IsUpdate returns true when mp.Fnc0 == 0 && mp.Fnc1 == 1

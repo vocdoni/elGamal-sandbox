@@ -16,7 +16,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/vocdoni/arbo v0.0.0-20241216103934-e64315269b49
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241118090531-f24bf0de0e2f
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241218124633-bd3f44d2cb73
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20241220102053-ba1eee831862
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 )
 

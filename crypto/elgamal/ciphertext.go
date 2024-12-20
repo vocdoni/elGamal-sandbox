@@ -13,8 +13,103 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 )
 
-// size in bytes needed to serialize an ecc.Point coord
-const sizePointCoord = 32
+// NumCiphertexts represents how many Ciphertexts are grouped
+const NumCiphertexts = 2
+
+// sizes in bytes needed to serialize Ciphertexts
+const (
+	sizeCoord       = 32
+	sizePoint       = 2 * sizeCoord
+	SizeCiphertext  = 2 * sizePoint
+	SizeCiphertexts = NumCiphertexts * SizeCiphertext
+)
+
+type Ciphertexts [NumCiphertexts]*Ciphertext
+
+func NewCiphertexts(curve ecc.Point) *Ciphertexts {
+	cs := &Ciphertexts{}
+	for i := range cs {
+		cs[i] = NewCiphertext(curve)
+	}
+	return cs
+}
+
+// Encrypt encrypts a message using the public key provided as elliptic curve point.
+// The randomness k can be provided or nil to generate a new one.
+func (cs *Ciphertexts) Encrypt(message [NumCiphertexts]*big.Int, publicKey ecc.Point, k *big.Int) (*Ciphertexts, error) {
+	for i := range cs {
+		if _, err := cs[i].Encrypt(message[i], publicKey, k); err != nil {
+			return nil, err
+		}
+	}
+	return cs, nil
+}
+
+// Add adds two Ciphertexts and stores the result in the receiver, which is also returned.
+func (cs *Ciphertexts) Add(x, y *Ciphertexts) *Ciphertexts {
+	for i := range cs {
+		cs[i].Add(x[i], y[i])
+	}
+	return cs
+}
+
+// Serialize returns a slice of len N*4*32 bytes,
+// representing each Ciphertext C1.X, C1.Y, C2.X, C2.Y as little-endian,
+// in reduced twisted edwards form.
+func (cs *Ciphertexts) Serialize() []byte {
+	var buf bytes.Buffer
+	for _, z := range cs {
+		buf.Write(z.Serialize())
+	}
+	return buf.Bytes()
+}
+
+// Deserialize reconstructs a Ciphertexts from a slice of bytes.
+// The input must be of len N*4*32 bytes (otherwise it returns an error),
+// representing each Ciphertext C1.X, C1.Y, C2.X, C2.Y as little-endian,
+// in reduced twisted edwards form.
+func (cs *Ciphertexts) Deserialize(data []byte) error {
+	// Validate the input length
+	if len(data) != SizeCiphertexts {
+		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), SizeCiphertexts)
+	}
+	for i := range cs {
+		err := cs[i].Deserialize(data[i*SizeCiphertext : (i+1)*SizeCiphertext])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TODO: implement Marshal, Unmarshal, String for Ciphertexts
+// // Marshal converts Ciphertexts to a byte slice.
+// func (z *Ciphertexts) Marshal() ([]byte, error) {
+// 	return json.Marshal(z)
+// }
+
+// // Unmarshal populates Ciphertexts from a byte slice.
+// func (z *Ciphertexts) Unmarshal(data []byte) error {
+// 	return json.Unmarshal(data, z)
+// }
+
+// // String returns a string representation of the Ciphertexts.
+// func (z *Ciphertexts) String() string {
+// 	if z == nil || z.C1 == nil || z.C2 == nil {
+// 		return "{C1: nil, C2: nil}"
+// 	}
+// 	return fmt.Sprintf("{C1: %s, C2: %s}", z.C1.String(), z.C2.String())
+// }
+
+// ToGnark returns cs as the struct used by gnark,
+// with the points in reduced twisted edwards format
+func (cs *Ciphertexts) ToGnark() *gelgamal.Ciphertexts {
+	gcs := &gelgamal.Ciphertexts{}
+	for i := range cs {
+		gcs[i] = *cs[i].ToGnark()
+	}
+	return gcs
+}
 
 // Ciphertext represents an ElGamal encrypted message with homomorphic properties.
 // It is a wrapper for convenience of the elGamal ciphersystem that encapsulates the two points of a ciphertext.
@@ -65,7 +160,7 @@ func (z *Ciphertext) Serialize() []byte {
 	c1x, c1y := format.FromTEtoRTE(z.C1.Point())
 	c2x, c2y := format.FromTEtoRTE(z.C2.Point())
 	for _, bi := range []*big.Int{c1x, c1y, c2x, c2y} {
-		buf.Write(arbo.BigIntToBytes(sizePointCoord, bi))
+		buf.Write(arbo.BigIntToBytes(sizeCoord, bi))
 	}
 	return buf.Bytes()
 }
@@ -76,23 +171,23 @@ func (z *Ciphertext) Serialize() []byte {
 // in reduced twisted edwards form.
 func (z *Ciphertext) Deserialize(data []byte) error {
 	// Validate the input length
-	if len(data) != 4*sizePointCoord {
-		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), 4*sizePointCoord)
+	if len(data) != SizeCiphertext {
+		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), SizeCiphertext)
 	}
 
-	// Helper function to extract *big.Int from a 32-byte slice
+	// Helper function to extract *big.Int from a serialized slice
 	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+sizePointCoord])
+		return arbo.BytesToBigInt(data[offset : offset+sizeCoord])
 	}
 	// Deserialize each field
 	// TODO: we wouldn't need the format conversion if SetPoint() accepts the correct format
 	z.C1 = z.C1.SetPoint(format.FromRTEtoTE(
-		readBigInt(0*sizePointCoord),
-		readBigInt(1*sizePointCoord),
+		readBigInt(0*sizeCoord),
+		readBigInt(1*sizeCoord),
 	))
 	z.C2 = z.C2.SetPoint(format.FromRTEtoTE(
-		readBigInt(2*sizePointCoord),
-		readBigInt(3*sizePointCoord),
+		readBigInt(2*sizeCoord),
+		readBigInt(3*sizeCoord),
 	))
 	return nil
 }
@@ -117,11 +212,11 @@ func (z *Ciphertext) String() string {
 
 // ToGnark returns z as the struct used by gnark,
 // with the points in reduced twisted edwards format
-func (z *Ciphertext) ToGnark() gelgamal.Ciphertext {
+func (z *Ciphertext) ToGnark() *gelgamal.Ciphertext {
 	// TODO: we wouldn't need the format conversion if Point() returns the correct format
 	c1x, c1y := format.FromTEtoRTE(z.C1.Point())
 	c2x, c2y := format.FromTEtoRTE(z.C2.Point())
-	return gelgamal.Ciphertext{
+	return &gelgamal.Ciphertext{
 		C1: twistededwards.Point{X: c1x, Y: c1y},
 		C2: twistededwards.Point{X: c2x, Y: c2y},
 	}
