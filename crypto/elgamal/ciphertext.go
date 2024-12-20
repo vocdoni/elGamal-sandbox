@@ -13,7 +13,16 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 )
 
+// NumCiphertexts represents how many Ciphertexts are grouped
 const NumCiphertexts = 2
+
+// sizes in bytes needed to serialize Ciphertexts
+const (
+	sizeCoord       = 32
+	sizePoint       = 2 * sizeCoord
+	SizeCiphertext  = 2 * sizePoint
+	SizeCiphertexts = NumCiphertexts * SizeCiphertext
+)
 
 type Ciphertexts [NumCiphertexts]*Ciphertext
 
@@ -61,11 +70,11 @@ func (cs *Ciphertexts) Serialize() []byte {
 // in reduced twisted edwards form.
 func (cs *Ciphertexts) Deserialize(data []byte) error {
 	// Validate the input length
-	if len(data) != NumCiphertexts*4*sizePointCoord {
-		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), NumCiphertexts*4*sizePointCoord)
+	if len(data) != SizeCiphertexts {
+		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), SizeCiphertexts)
 	}
 	for i := range cs {
-		err := cs[i].Deserialize(data[i*sizePointCoord : (i+1)*sizePointCoord])
+		err := cs[i].Deserialize(data[i*SizeCiphertext : (i+1)*SizeCiphertext])
 		if err != nil {
 			return err
 		}
@@ -101,9 +110,6 @@ func (cs *Ciphertexts) ToGnark() *gelgamal.Ciphertexts {
 	}
 	return gcs
 }
-
-// size in bytes needed to serialize an ecc.Point coord
-const sizePointCoord = 32
 
 // Ciphertext represents an ElGamal encrypted message with homomorphic properties.
 // It is a wrapper for convenience of the elGamal ciphersystem that encapsulates the two points of a ciphertext.
@@ -154,7 +160,7 @@ func (z *Ciphertext) Serialize() []byte {
 	c1x, c1y := format.FromTEtoRTE(z.C1.Point())
 	c2x, c2y := format.FromTEtoRTE(z.C2.Point())
 	for _, bi := range []*big.Int{c1x, c1y, c2x, c2y} {
-		buf.Write(arbo.BigIntToBytes(sizePointCoord, bi))
+		buf.Write(arbo.BigIntToBytes(sizeCoord, bi))
 	}
 	return buf.Bytes()
 }
@@ -165,23 +171,23 @@ func (z *Ciphertext) Serialize() []byte {
 // in reduced twisted edwards form.
 func (z *Ciphertext) Deserialize(data []byte) error {
 	// Validate the input length
-	if len(data) != 4*sizePointCoord {
-		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), 4*sizePointCoord)
+	if len(data) != SizeCiphertext {
+		return fmt.Errorf("invalid input length: got %d bytes, expected %d bytes", len(data), SizeCiphertext)
 	}
 
-	// Helper function to extract *big.Int from a 32-byte slice
+	// Helper function to extract *big.Int from a serialized slice
 	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+sizePointCoord])
+		return arbo.BytesToBigInt(data[offset : offset+sizeCoord])
 	}
 	// Deserialize each field
 	// TODO: we wouldn't need the format conversion if SetPoint() accepts the correct format
 	z.C1 = z.C1.SetPoint(format.FromRTEtoTE(
-		readBigInt(0*sizePointCoord),
-		readBigInt(1*sizePointCoord),
+		readBigInt(0*sizeCoord),
+		readBigInt(1*sizeCoord),
 	))
 	z.C2 = z.C2.SetPoint(format.FromRTEtoTE(
-		readBigInt(2*sizePointCoord),
-		readBigInt(3*sizePointCoord),
+		readBigInt(2*sizeCoord),
+		readBigInt(3*sizeCoord),
 	))
 	return nil
 }
